@@ -4,7 +4,7 @@ using memoriza_backend.Models.Auth;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 
-namespace memoriza_backend.Services.Auth
+namespace memoriza_backend.Repositories.Auth
 {
     // Implementação do repositório de usuário utilizando Postgres (Supabase)
     public class UserRepository : IUserRepository
