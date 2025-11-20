@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using memoriza_backend.Models.Auth;
 
-namespace memoriza_backend.Services.Auth
+namespace memoriza_backend.Repositories.Auth
 {
     // Repositório responsável pelo acesso a dados de usuário no banco Postgres (Supabase)
     public interface IUserRepository

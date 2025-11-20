@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using memoriza_backend.Models.Auth;
 using memoriza_backend.Models.DTO.Auth;
 using memoriza_backend.Helpers;
+using memoriza_backend.Repositories.Auth;
 
 namespace memoriza_backend.Services.Auth
 {
