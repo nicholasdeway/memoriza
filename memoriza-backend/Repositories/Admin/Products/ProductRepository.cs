@@ -1,4 +1,8 @@
-﻿using memoriza_backend.Models.Admin;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Dapper;
+using memoriza_backend.Models.Admin;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 
@@ -16,136 +20,153 @@ namespace memoriza_backend.Repositories.Admin.Products
 
         private NpgsqlConnection GetConnection() => new NpgsqlConnection(_connectionString);
 
+        // ======================================================
+        // GET ALL
+        // ======================================================
         public async Task<IReadOnlyList<Product>> GetAllAsync()
         {
-            var list = new List<Product>();
+            const string sql = @"
+                SELECT 
+                    id                  AS ""Id"",
+                    category_id         AS ""CategoryId"",
+                    name                AS ""Name"",
+                    description         AS ""Description"",
+                    price               AS ""Price"",
+                    is_personalizable   AS ""IsPersonalizable"",
+                    is_active           AS ""IsActive"",
+                    created_at          AS ""CreatedAt""
+                FROM products
+                ORDER BY created_at DESC;
+            ";
 
             await using var conn = GetConnection();
+            // Dapper abre a conexão automaticamente se ela estiver fechada,
+            // mas não tem problema manter o OpenAsync se você preferir:
             await conn.OpenAsync();
 
-            const string sql = @"
-                SELECT id, category_id, name, description, price,
-                       is_personalizable, is_active, created_at
-                FROM products
-                ORDER BY created_at DESC;";
-
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            await using var reader = await cmd.ExecuteReaderAsync();
-
-            while (await reader.ReadAsync())
-            {
-                list.Add(new Product
-                {
-                    Id = reader.GetGuid(0),
-                    CategoryId = reader.GetGuid(1),
-                    Name = reader.GetString(2),
-                    Description = reader.IsDBNull(3) ? null : reader.GetString(3),
-                    Price = reader.GetDecimal(4),
-                    IsPersonalizable = reader.GetBoolean(5),
-                    IsActive = reader.GetBoolean(6),
-                    CreatedAt = reader.GetDateTime(7)
-                });
-            }
-
-            return list;
+            var list = await conn.QueryAsync<Product>(sql);
+            return list.AsList();
         }
 
+        // ======================================================
+        // GET BY ID
+        // ======================================================
         public async Task<Product?> GetByIdAsync(Guid id)
         {
-            await using var conn = GetConnection();
-            await conn.OpenAsync();
-
             const string sql = @"
-                SELECT id, category_id, name, description, price,
-                       is_personalizable, is_active, created_at
+                SELECT 
+                    id                  AS ""Id"",
+                    category_id         AS ""CategoryId"",
+                    name                AS ""Name"",
+                    description         AS ""Description"",
+                    price               AS ""Price"",
+                    is_personalizable   AS ""IsPersonalizable"",
+                    is_active           AS ""IsActive"",
+                    created_at          AS ""CreatedAt""
                 FROM products
-                WHERE id = @id;";
+                WHERE id = @Id;
+            ";
 
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", id);
-
-            await using var reader = await cmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
-                return null;
-
-            return new Product
-            {
-                Id = reader.GetGuid(0),
-                CategoryId = reader.GetGuid(1),
-                Name = reader.GetString(2),
-                Description = reader.IsDBNull(3) ? null : reader.GetString(3),
-                Price = reader.GetDecimal(4),
-                IsPersonalizable = reader.GetBoolean(5),
-                IsActive = reader.GetBoolean(6),
-                CreatedAt = reader.GetDateTime(7)
-            };
-        }
-
-        public async Task<Product> CreateAsync(Product product)
-        {
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"
-                INSERT INTO products
-                    (id, category_id, name, description, price,
-                     is_personalizable, is_active, created_at)
-                VALUES
-                    (@id, @category_id, @name, @description, @price,
-                     @is_personalizable, @is_active, @created_at);";
-
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", product.Id);
-            cmd.Parameters.AddWithValue("category_id", product.CategoryId);
-            cmd.Parameters.AddWithValue("name", product.Name);
-            cmd.Parameters.AddWithValue("description", (object?)product.Description ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("price", product.Price);
-            cmd.Parameters.AddWithValue("is_personalizable", product.IsPersonalizable);
-            cmd.Parameters.AddWithValue("is_active", product.IsActive);
-            cmd.Parameters.AddWithValue("created_at", product.CreatedAt);
-
-            await cmd.ExecuteNonQueryAsync();
+            var product = await conn.QuerySingleOrDefaultAsync<Product>(sql, new { Id = id });
             return product;
         }
 
-        public async Task UpdateAsync(Product product)
+        // ======================================================
+        // CREATE
+        // ======================================================
+        public async Task<Product> CreateAsync(Product product)
         {
+            const string sql = @"
+                INSERT INTO products (
+                    id,
+                    category_id,
+                    name,
+                    description,
+                    price,
+                    is_personalizable,
+                    is_active,
+                    created_at
+                )
+                VALUES (
+                    @Id,
+                    @CategoryId,
+                    @Name,
+                    @Description,
+                    @Price,
+                    @IsPersonalizable,
+                    @IsActive,
+                    @CreatedAt
+                );
+            ";
+
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"
-                UPDATE products
-                SET category_id = @category_id,
-                    name = @name,
-                    description = @description,
-                    price = @price,
-                    is_personalizable = @is_personalizable,
-                    is_active = @is_active
-                WHERE id = @id;";
+            await conn.ExecuteAsync(sql, new
+            {
+                product.Id,
+                product.CategoryId,
+                product.Name,
+                Description = (object?)product.Description ?? DBNull.Value,
+                product.Price,
+                product.IsPersonalizable,
+                product.IsActive,
+                product.CreatedAt
+            });
 
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", product.Id);
-            cmd.Parameters.AddWithValue("category_id", product.CategoryId);
-            cmd.Parameters.AddWithValue("name", product.Name);
-            cmd.Parameters.AddWithValue("description", (object?)product.Description ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("price", product.Price);
-            cmd.Parameters.AddWithValue("is_personalizable", product.IsPersonalizable);
-            cmd.Parameters.AddWithValue("is_active", product.IsActive);
-
-            await cmd.ExecuteNonQueryAsync();
+            // Mesmo comportamento anterior: apenas retorna o objeto passado
+            return product;
         }
 
-        public async Task DeleteAsync(Guid id)
+        // ======================================================
+        // UPDATE
+        // ======================================================
+        public async Task UpdateAsync(Product product)
         {
+            const string sql = @"
+                UPDATE products
+                SET category_id       = @CategoryId,
+                    name              = @Name,
+                    description       = @Description,
+                    price             = @Price,
+                    is_personalizable = @IsPersonalizable,
+                    is_active         = @IsActive
+                WHERE id = @Id;
+            ";
+
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"UPDATE products SET is_active = FALSE WHERE id = @id;";
+            await conn.ExecuteAsync(sql, new
+            {
+                product.Id,
+                product.CategoryId,
+                product.Name,
+                Description = (object?)product.Description ?? DBNull.Value,
+                product.Price,
+                product.IsPersonalizable,
+                product.IsActive
+            });
+        }
 
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", id);
+        // ======================================================
+        // SOFT DELETE (is_active = FALSE)
+        // ======================================================
+        public async Task DeleteAsync(Guid id)
+        {
+            const string sql = @"
+                UPDATE products
+                SET is_active = FALSE
+                WHERE id = @Id;
+            ";
 
-            await cmd.ExecuteNonQueryAsync();
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
+
+            await conn.ExecuteAsync(sql, new { Id = id });
         }
     }
 }

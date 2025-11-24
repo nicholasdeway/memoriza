@@ -1,4 +1,4 @@
-﻿using memoriza_backend.Models.DTO.Admin.Dashboard;
+﻿using memoriza_backend.Models.DTO.Admin;
 using memoriza_backend.Repositories.Admin.Dashboard;
 
 namespace memoriza_backend.Services.Admin.Dashboard

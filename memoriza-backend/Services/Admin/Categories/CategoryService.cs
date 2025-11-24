@@ -1,5 +1,5 @@
 ﻿using memoriza_backend.Models.Admin;
-using memoriza_backend.Models.DTO.Admin.Categories;
+using memoriza_backend.Models.DTO.Admin;
 using memoriza_backend.Repositories.Admin.Categories;
 
 namespace memoriza_backend.Services.Admin.Categories

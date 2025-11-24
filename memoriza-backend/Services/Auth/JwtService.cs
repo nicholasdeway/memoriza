@@ -4,7 +4,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
-using memoriza_backend.Models.Auth;
+using memoriza_backend.Models.Authentication;
 
 namespace memoriza_backend.Services.Auth
 {

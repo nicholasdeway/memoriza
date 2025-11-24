@@ -1,4 +1,8 @@
-﻿using memoriza_backend.Models.Admin;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Dapper;
+using memoriza_backend.Models.Admin;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 
@@ -16,116 +20,113 @@ namespace memoriza_backend.Repositories.Admin.Categories
 
         private NpgsqlConnection GetConnection() => new NpgsqlConnection(_connectionString);
 
+        // ======================================================
+        // GET ALL
+        // ======================================================
         public async Task<IReadOnlyList<Category>> GetAllAsync()
         {
-            var list = new List<Category>();
+            const string sql = @"
+                SELECT 
+                    id          AS ""Id"",
+                    name        AS ""Name"",
+                    description AS ""Description"",
+                    is_active   AS ""IsActive"",
+                    created_at  AS ""CreatedAt""
+                FROM categories
+                ORDER BY created_at DESC;
+            ";
 
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"
-                SELECT id, name, description, is_active, created_at
-                FROM categories
-                ORDER BY created_at DESC;";
-
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            await using var reader = await cmd.ExecuteReaderAsync();
-
-            while (await reader.ReadAsync())
-            {
-                list.Add(new Category
-                {
-                    Id = reader.GetGuid(0),
-                    Name = reader.GetString(1),
-                    Description = reader.IsDBNull(2) ? null : reader.GetString(2),
-                    IsActive = reader.GetBoolean(3),
-                    CreatedAt = reader.GetDateTime(4)
-                });
-            }
-
-            return list;
+            var list = await conn.QueryAsync<Category>(sql);
+            return list.AsList();
         }
 
+        // ======================================================
+        // GET BY ID
+        // ======================================================
         public async Task<Category?> GetByIdAsync(Guid id)
         {
-            await using var conn = GetConnection();
-            await conn.OpenAsync();
-
             const string sql = @"
-                SELECT id, name, description, is_active, created_at
+                SELECT 
+                    id          AS ""Id"",
+                    name        AS ""Name"",
+                    description AS ""Description"",
+                    is_active   AS ""IsActive"",
+                    created_at  AS ""CreatedAt""
                 FROM categories
-                WHERE id = @id;";
+                WHERE id = @Id;
+            ";
 
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", id);
-
-            await using var reader = await cmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
-                return null;
-
-            return new Category
-            {
-                Id = reader.GetGuid(0),
-                Name = reader.GetString(1),
-                Description = reader.IsDBNull(2) ? null : reader.GetString(2),
-                IsActive = reader.GetBoolean(3),
-                CreatedAt = reader.GetDateTime(4)
-            };
-        }
-
-        public async Task<Category> CreateAsync(Category category)
-        {
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"
-                INSERT INTO categories (id, name, description, is_active, created_at)
-                VALUES (@id, @name, @description, @is_active, @created_at);";
-
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", category.Id);
-            cmd.Parameters.AddWithValue("name", category.Name);
-            cmd.Parameters.AddWithValue("description", (object?)category.Description ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("is_active", category.IsActive);
-            cmd.Parameters.AddWithValue("created_at", category.CreatedAt);
-
-            await cmd.ExecuteNonQueryAsync();
+            var category = await conn.QuerySingleOrDefaultAsync<Category>(sql, new { Id = id });
             return category;
         }
 
-        public async Task UpdateAsync(Category category)
+        // ======================================================
+        // CREATE
+        // ======================================================
+        public async Task<Category> CreateAsync(Category category)
         {
+            const string sql = @"
+                INSERT INTO categories (id, name, description, is_active, created_at)
+                VALUES (@Id, @Name, @Description, @IsActive, @CreatedAt);
+            ";
+
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"
-                UPDATE categories
-                SET name = @name,
-                    description = @description,
-                    is_active = @is_active
-                WHERE id = @id;";
+            await conn.ExecuteAsync(sql, new
+            {
+                category.Id,
+                category.Name,
+                Description = (object?)category.Description ?? DBNull.Value,
+                category.IsActive,
+                category.CreatedAt
+            });
 
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", category.Id);
-            cmd.Parameters.AddWithValue("name", category.Name);
-            cmd.Parameters.AddWithValue("description", (object?)category.Description ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("is_active", category.IsActive);
-
-            await cmd.ExecuteNonQueryAsync();
+            return category;
         }
 
-        public async Task DeleteAsync(Guid id)
+        // ======================================================
+        // UPDATE
+        // ======================================================
+        public async Task UpdateAsync(Category category)
         {
-            // delete lógico
+            const string sql = @"
+                UPDATE categories
+                SET name        = @Name,
+                    description = @Description,
+                    is_active   = @IsActive
+                WHERE id = @Id;
+            ";
+
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"UPDATE categories SET is_active = FALSE WHERE id = @id;";
+            await conn.ExecuteAsync(sql, new
+            {
+                category.Id,
+                category.Name,
+                Description = (object?)category.Description ?? DBNull.Value,
+                category.IsActive
+            });
+        }
 
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", id);
+        // ======================================================
+        // SOFT DELETE (is_active = FALSE)
+        // ======================================================
+        public async Task DeleteAsync(Guid id)
+        {
+            const string sql = @"UPDATE categories SET is_active = FALSE WHERE id = @Id;";
 
-            await cmd.ExecuteNonQueryAsync();
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
+
+            await conn.ExecuteAsync(sql, new { Id = id });
         }
     }
 }
