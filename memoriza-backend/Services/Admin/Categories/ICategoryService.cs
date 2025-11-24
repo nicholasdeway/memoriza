@@ -1,4 +1,4 @@
-﻿using memoriza_backend.Models.DTO.Admin.Categories;
+﻿using memoriza_backend.Models.DTO.Admin;
 
 namespace memoriza_backend.Services.Admin.Categories
 {

@@ -1,11 +1,18 @@
-﻿using memoriza_backend.Models.DTO.Admin.Categories;
+﻿using memoriza_backend.Models.DTO.Admin;
 using memoriza_backend.Services.Admin.Categories;
 using Microsoft.AspNetCore.Mvc;
+
+// using Microsoft.AspNetCore.Authorization; // TODO: DESCOMENTAR EM PRODUÇÃO
 
 namespace memoriza_backend.Controllers.Admin
 {
     [ApiController]
     [Route("api/admin/categories")]
+
+    // ======================================================
+    // TODO: HABILITAR EM PRODUÇÃO!
+    // [Authorize(Roles = "Admin")]
+    // ======================================================
     public class AdminCategoriesController : ControllerBase
     {
         private readonly ICategoryService _service;

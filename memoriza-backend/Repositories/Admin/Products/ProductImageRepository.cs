@@ -1,4 +1,9 @@
-﻿using memoriza_backend.Models.Admin;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Dapper;
+using memoriza_backend.Models.Admin;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 
@@ -16,140 +21,170 @@ namespace memoriza_backend.Repositories.Admin.Products
 
         private NpgsqlConnection GetConnection() => new NpgsqlConnection(_connectionString);
 
+        // ======================================================
+        // GET BY PRODUCT ID
+        // ======================================================
         public async Task<IReadOnlyList<ProductImage>> GetByProductIdAsync(Guid productId)
         {
-            var list = new List<ProductImage>();
+            const string sql = @"
+                SELECT 
+                    id              AS ""Id"",
+                    product_id      AS ""ProductId"",
+                    url             AS ""Url"",
+                    alt_text        AS ""AltText"",
+                    is_primary      AS ""IsPrimary"",
+                    display_order   AS ""DisplayOrder"",
+                    created_at      AS ""CreatedAt""
+                FROM product_images
+                WHERE product_id = @ProductId
+                ORDER BY is_primary DESC, display_order ASC, created_at ASC;
+            ";
 
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"
-                SELECT id, product_id, url, alt_text, is_primary, display_order, created_at
-                FROM product_images
-                WHERE product_id = @product_id
-                ORDER BY is_primary DESC, display_order ASC, created_at ASC;";
+            var images = await conn.QueryAsync<ProductImage>(sql, new { ProductId = productId });
 
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("product_id", productId);
-
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                list.Add(new ProductImage
-                {
-                    Id = reader.GetGuid(0),
-                    ProductId = reader.GetGuid(1),
-                    Url = reader.GetString(2),
-                    AltText = reader.IsDBNull(3) ? null : reader.GetString(3),
-                    IsPrimary = reader.GetBoolean(4),
-                    DisplayOrder = reader.GetInt32(5),
-                    CreatedAt = reader.GetDateTime(6)
-                });
-            }
-
-            return list;
+            return images.AsList();
         }
 
+        // ======================================================
+        // GET BY MULTIPLE PRODUCT IDS (BATCH)
+        // ======================================================
+        public async Task<IReadOnlyList<ProductImage>> GetByProductIdsAsync(IEnumerable<Guid> productIds)
+        {
+            var ids = productIds?
+                .Distinct()
+                .ToArray() ?? Array.Empty<Guid>();
+
+            if (ids.Length == 0)
+                return Array.Empty<ProductImage>();
+
+            const string sql = @"
+                SELECT 
+                    id              AS ""Id"",
+                    product_id      AS ""ProductId"",
+                    url             AS ""Url"",
+                    alt_text        AS ""AltText"",
+                    is_primary      AS ""IsPrimary"",
+                    display_order   AS ""DisplayOrder"",
+                    created_at      AS ""CreatedAt""
+                FROM product_images
+                WHERE product_id = ANY(@ProductIds)
+                ORDER BY is_primary DESC, display_order ASC, created_at ASC;
+            ";
+
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
+
+            var images = await conn.QueryAsync<ProductImage>(sql, new { ProductIds = ids });
+            return images.AsList();
+        }
+
+        // ======================================================
+        // GET BY ID
+        // ======================================================
         public async Task<ProductImage?> GetByIdAsync(Guid id)
         {
+            const string sql = @"
+                SELECT 
+                    id              AS ""Id"",
+                    product_id      AS ""ProductId"",
+                    url             AS ""Url"",
+                    alt_text        AS ""AltText"",
+                    is_primary      AS ""IsPrimary"",
+                    display_order   AS ""DisplayOrder"",
+                    created_at      AS ""CreatedAt""
+                FROM product_images
+                WHERE id = @Id;
+            ";
+
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"
-                SELECT id, product_id, url, alt_text, is_primary, display_order, created_at
-                FROM product_images
-                WHERE id = @id;";
-
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", id);
-
-            await using var reader = await cmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
-                return null;
-
-            return new ProductImage
-            {
-                Id = reader.GetGuid(0),
-                ProductId = reader.GetGuid(1),
-                Url = reader.GetString(2),
-                AltText = reader.IsDBNull(3) ? null : reader.GetString(3),
-                IsPrimary = reader.GetBoolean(4),
-                DisplayOrder = reader.GetInt32(5),
-                CreatedAt = reader.GetDateTime(6)
-            };
+            return await conn.QuerySingleOrDefaultAsync<ProductImage>(sql, new { Id = id });
         }
 
+        // ======================================================
+        // CREATE
+        // ======================================================
         public async Task<ProductImage> CreateAsync(ProductImage image)
         {
-            await using var conn = GetConnection();
-            await conn.OpenAsync();
-
             const string sql = @"
                 INSERT INTO product_images
                     (id, product_id, url, alt_text, is_primary, display_order, created_at)
                 VALUES
-                    (@id, @product_id, @url, @alt_text, @is_primary, @display_order, @created_at);";
+                    (@Id, @ProductId, @Url, @AltText, @IsPrimary, @DisplayOrder, @CreatedAt);
+            ";
 
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", image.Id);
-            cmd.Parameters.AddWithValue("product_id", image.ProductId);
-            cmd.Parameters.AddWithValue("url", image.Url);
-            cmd.Parameters.AddWithValue("alt_text", (object?)image.AltText ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("is_primary", image.IsPrimary);
-            cmd.Parameters.AddWithValue("display_order", image.DisplayOrder);
-            cmd.Parameters.AddWithValue("created_at", image.CreatedAt);
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
 
-            await cmd.ExecuteNonQueryAsync();
+            await conn.ExecuteAsync(sql, new
+            {
+                image.Id,
+                image.ProductId,
+                image.Url,
+                AltText = (object?)image.AltText ?? DBNull.Value,
+                image.IsPrimary,
+                image.DisplayOrder,
+                image.CreatedAt
+            });
+
             return image;
         }
 
+        // ======================================================
+        // UPDATE
+        // ======================================================
         public async Task UpdateAsync(ProductImage image)
         {
-            await using var conn = GetConnection();
-            await conn.OpenAsync();
-
             const string sql = @"
                 UPDATE product_images
-                SET url = @url,
-                    alt_text = @alt_text,
-                    is_primary = @is_primary,
-                    display_order = @display_order
-                WHERE id = @id;";
+                SET url           = @Url,
+                    alt_text      = @AltText,
+                    is_primary    = @IsPrimary,
+                    display_order = @DisplayOrder
+                WHERE id = @Id;
+            ";
 
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", image.Id);
-            cmd.Parameters.AddWithValue("url", image.Url);
-            cmd.Parameters.AddWithValue("alt_text", (object?)image.AltText ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("is_primary", image.IsPrimary);
-            cmd.Parameters.AddWithValue("display_order", image.DisplayOrder);
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
 
-            await cmd.ExecuteNonQueryAsync();
+            await conn.ExecuteAsync(sql, new
+            {
+                image.Id,
+                image.Url,
+                AltText = (object?)image.AltText ?? DBNull.Value,
+                image.IsPrimary,
+                image.DisplayOrder
+            });
         }
 
+        // ======================================================
+        // DELETE
+        // ======================================================
         public async Task DeleteAsync(Guid id)
         {
+            const string sql = @"DELETE FROM product_images WHERE id = @Id;";
+
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"DELETE FROM product_images WHERE id = @id;";
-
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("id", id);
-
-            await cmd.ExecuteNonQueryAsync();
+            await conn.ExecuteAsync(sql, new { Id = id });
         }
 
+        // ======================================================
+        // DELETE ALL BY PRODUCT ID
+        // ======================================================
         public async Task DeleteAllByProductIdAsync(Guid productId)
         {
+            const string sql = @"DELETE FROM product_images WHERE product_id = @ProductId;";
+
             await using var conn = GetConnection();
             await conn.OpenAsync();
 
-            const string sql = @"DELETE FROM product_images WHERE product_id = @product_id;";
-
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("product_id", productId);
-
-            await cmd.ExecuteNonQueryAsync();
+            await conn.ExecuteAsync(sql, new { ProductId = productId });
         }
     }
 }

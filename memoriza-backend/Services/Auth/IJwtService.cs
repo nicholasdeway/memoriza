@@ -1,5 +1,5 @@
 ﻿using System.Security.Claims;
-using memoriza_backend.Models.Auth;
+using memoriza_backend.Models.Authentication;
 
 namespace memoriza_backend.Services.Auth
 {

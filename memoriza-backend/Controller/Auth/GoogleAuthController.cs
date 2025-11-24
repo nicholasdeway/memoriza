@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
-using memoriza_backend.Models.Auth;
+using memoriza_backend.Models.Authentication;
 using memoriza_backend.Services.Auth;
 using memoriza_backend.Settings;
 using memoriza_backend.Repositories.Auth;
@@ -147,13 +147,13 @@ namespace memoriza_backend.Controllers.Auth
                     CreatedAt = DateTime.UtcNow,
                     PasswordResetPending = false,
 
-                    // 🔹 Origem Google
+                    // Origem Google
                     AuthProvider = "Google",
                     ProviderUserId = sub,
                     ProviderEmail = emailNorm,
                     PictureUrl = picture,
 
-                    // 🔹 Grupo padrão: usuário comum
+                    // Grupo padrão: usuário comum
                     UserGroupId = (int)UserGroupType.UsuarioComum,
 
                     LastLoginAt = DateTime.UtcNow
@@ -178,8 +178,7 @@ namespace memoriza_backend.Controllers.Auth
 
                 user.LastLoginAt = DateTime.UtcNow;
 
-                // Se quiser persistir essas mudanças, crie um método UpdateAsync no repositório:
-                // user = await _userRepository.UpdateAsync(user);
+                user = await _userRepository.UpdateAsync(user);
             }
 
             // gera token com o JwtService (usa Id, Email, nomes, grupo, provedor)

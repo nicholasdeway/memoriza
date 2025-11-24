@@ -1,4 +1,4 @@
-﻿using memoriza_backend.Models.DTO.Admin.Dashboard;
+﻿using memoriza_backend.Models.DTO.Admin;
 
 namespace memoriza_backend.Repositories.Admin.Dashboard
 {

@@ -1,6 +1,7 @@
 ﻿using memoriza_backend.Models.Admin;
-using memoriza_backend.Models.DTO.Admin.Products;
+using memoriza_backend.Models.DTO.Admin;
 using memoriza_backend.Repositories.Admin.Products;
+using System.Linq;
 
 namespace memoriza_backend.Services.Admin.Products
 {
@@ -52,16 +53,35 @@ namespace memoriza_backend.Services.Admin.Products
         {
             var products = await _productRepository.GetAllAsync();
 
-            // se quiser carregar imagens de todos, pode fazer por produto,
-            // mas isso é N+1. Pra projeto pequeno ok; pra otimizar, depois
-            // fazemos join em SQL.
-            var result = new List<ProductResponseDto>();
+            if (products == null || products.Count == 0)
+                return Array.Empty<ProductResponseDto>();
 
-            foreach (var p in products)
-            {
-                var images = await _imageRepository.GetByProductIdAsync(p.Id);
-                result.Add(MapToDto(p, images));
-            }
+            // 1) Pega todos os IDs
+            var productIds = products
+                .Select(p => p.Id)
+                .Distinct()
+                .ToArray();
+
+            // 2) Busca todas as imagens em uma única query
+            var allImages = await _imageRepository.GetByProductIdsAsync(productIds);
+
+            // 3) Agrupa imagens por produto
+            var imagesByProduct = allImages
+                .GroupBy(i => i.ProductId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => (IReadOnlyList<ProductImage>)g.ToList()
+                );
+
+            // 4) Monta DTO de saída com as imagens corretas
+            var result = products
+                .Select(p =>
+                {
+                    imagesByProduct.TryGetValue(p.Id, out var images);
+                    return MapToDto(p, images);
+                })
+                .ToList()
+                .AsReadOnly();
 
             return result;
         }
@@ -142,7 +162,6 @@ namespace memoriza_backend.Services.Admin.Products
 
         public async Task<ProductImageDto> AddImageAsync(Guid productId, CreateProductImageDto dto)
         {
-            // opcional: validar se o produto existe
             var product = await _productRepository.GetByIdAsync(productId);
             if (product == null)
                 throw new ApplicationException("Produto não encontrado.");
