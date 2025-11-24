@@ -1,0 +1,86 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Dapper;
+using memoriza_backend.Models.Admin;
+using memoriza_backend.Models.DTO.Admin;
+using Microsoft.Extensions.Configuration;
+using Npgsql;
+
+namespace memoriza_backend.Repositories.Admin.Dashboard
+{
+    public class DashboardRepository : IDashboardRepository
+    {
+        private readonly string _connectionString;
+
+        public DashboardRepository(IConfiguration configuration)
+        {
+            _connectionString = configuration.GetConnectionString("DefaultConnection")
+                ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+        }
+
+        private NpgsqlConnection GetConnection() => new NpgsqlConnection(_connectionString);
+
+        // =====================================================
+        // SUMMARY
+        // =====================================================
+        public async Task<DashboardSummaryDto> GetSummaryAsync(DateTime from, DateTime to)
+        {
+            const string sql = @"
+                SELECT
+                    COALESCE(SUM(CASE WHEN status IN (2,3,4,5) THEN total ELSE 0 END), 0) AS ""TotalSales"",
+                    COALESCE(SUM(CASE WHEN status = 6 THEN total ELSE 0 END), 0) AS ""TotalRefunds"",
+                    COUNT(*) AS ""TotalOrders"",
+                    COUNT(*) FILTER (WHERE status = 1) AS ""OrdersAwaitingPayment"",
+                    COUNT(*) FILTER (WHERE status = 3) AS ""OrdersInProduction"",
+                    COUNT(*) FILTER (WHERE status = 5) AS ""OrdersFinished""
+                FROM orders
+                WHERE created_at BETWEEN @from AND @to;
+            ";
+
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
+
+            var summary = await conn.QuerySingleOrDefaultAsync<DashboardSummaryDto>(sql, new
+            {
+                from,
+                to
+            });
+
+            return summary ?? new DashboardSummaryDto();
+        }
+
+        // =====================================================
+        // TOP PRODUCTS
+        // =====================================================
+        public async Task<IReadOnlyList<TopProductDto>> GetTopProductsAsync(DateTime from, DateTime to, int limit)
+        {
+            const string sql = @"
+                SELECT 
+                    oi.product_id       AS ""ProductId"",
+                    oi.product_name     AS ""ProductName"",
+                    SUM(oi.quantity)    AS ""QuantitySold"",
+                    SUM(oi.subtotal)    AS ""TotalAmount""
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                WHERE o.created_at BETWEEN @from AND @to
+                  AND o.status IN (2,3,4,5)
+                GROUP BY oi.product_id, oi.product_name
+                ORDER BY ""QuantitySold"" DESC
+                LIMIT @limit;
+            ";
+
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
+
+            var products = await conn.QueryAsync<TopProductDto>(sql, new
+            {
+                from,
+                to,
+                limit
+            });
+
+            return products.AsList();
+        }
+    }
+}
