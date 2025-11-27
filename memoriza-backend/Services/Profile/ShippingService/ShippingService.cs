@@ -1,38 +1,70 @@
 ﻿using memoriza_backend.Models.DTO.User.Shipping;
-using memoriza_backend.Repositories.Interfaces;
 using memoriza_backend.Helpers;
 
 namespace memoriza_backend.Services.Profile.ShippingService
 {
     public class ShippingService : IShippingService
     {
-        private readonly IShippingRepository _shippingRepository;
+        private readonly IShippingCalculatorService _shippingCalculator;
 
-        public ShippingService(IShippingRepository shippingRepository)
+        public ShippingService(IShippingCalculatorService shippingCalculator)
         {
-            _shippingRepository = shippingRepository;
+            _shippingCalculator = shippingCalculator;
         }
 
-        public async Task<ServiceResult<CalculateShippingResponse>> CalculateShippingAsync(
+        public Task<ServiceResult<CalculateShippingResponse>> CalculateShippingAsync(
             string userId,
             CalculateShippingRequest request)
         {
-            // Exemplo de uso do repositório, sem quebrar a interface:
-            // Você pode escolher usar GetByCodeAsync ou GetAllActiveAsync
-            // dependendo de como seu CalculateShippingRequest foi definido.
+            // 1) Se for retirada na loja, não precisa de CEP nem calculadora.
+            if (request.PickupInStore)
+            {
+                var pickupOption = new ShippingOptionDto
+                {
+                    Code = "PICKUP",
+                    Name = "Retirada na loja",
+                    Description = "Retire seu pedido diretamente no ponto físico.",
+                    Price = 0m,
+                    EstimatedDays = 0
+                };
 
-            // 👇 Isso compila, mesmo que você ainda não use o resultado:
-            var regions = await _shippingRepository.GetAllActiveAsync();
+                var pickupResponse = new CalculateShippingResponse
+                {
+                    Options = new List<ShippingOptionDto> { pickupOption }
+                };
 
-            // Aqui você monta a resposta.
-            // Como eu não sei ainda quais propriedades existem em CalculateShippingResponse,
-            // vou criar só o objeto "vazio" (compila e você ajusta depois).
+                return Task.FromResult(
+                    ServiceResult<CalculateShippingResponse>.Ok(pickupResponse)
+                );
+            }
+
+            // 2) Entrega: CEP é obrigatório (já tem FluentValidation, mas garantimos aqui também)
+            if (string.IsNullOrWhiteSpace(request.Cep))
+            {
+                return Task.FromResult(
+                    ServiceResult<CalculateShippingResponse>.Fail("CEP é obrigatório para cálculo de frete.")
+                );
+            }
+
+            // 3) Busca opção de frete pela região/CEP
+            var option = _shippingCalculator.GetShippingByCep(request.Cep);
+
+            if (option == null)
+            {
+                return Task.FromResult(
+                    ServiceResult<CalculateShippingResponse>.Fail("CEP fora da área de cobertura.")
+                );
+            }
+
+            // 4) Monta resposta com lista de opções (hoje só 1, no futuro pode ter várias)
             var response = new CalculateShippingResponse
             {
-                // TODO: Preencher propriedades com base em "request" e/ou "regions"
+                Options = new List<ShippingOptionDto> { option }
             };
 
-            return ServiceResult<CalculateShippingResponse>.Ok(response);
+            return Task.FromResult(
+                ServiceResult<CalculateShippingResponse>.Ok(response)
+            );
         }
     }
 }

@@ -30,12 +30,39 @@ using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.IdentityModel.Tokens;
+// ========== PAYMENT ==========
+using memoriza_backend.Settings;
+using memoriza_backend.Services.Payments;
 // ========== SWAGGER / OPENAPI ==========
 using Microsoft.OpenApi.Models;
 using System.Security.Claims;
 using System.Text;
+// ========== SERILOG ==========
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ======================================================
+// SERILOG + MONGODB (LOGS)
+// ======================================================
+var mongoConnection = builder.Configuration.GetSection("MongoSettings")
+    .GetValue<string>("ConnectionString");
+
+if (string.IsNullOrWhiteSpace(mongoConnection))
+{
+    throw new ApplicationException("MongoSettings:ConnectionString não configurado no appsettings.json.");
+}
+
+Log.Logger = new LoggerConfiguration()
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.MongoDB(
+        mongoConnection,
+        collectionName: "app_logs"
+    )
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 // ======================================================
 // MVC / Controllers / Razor
@@ -54,7 +81,6 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IProfileRepository, ProfileRepository>();
 builder.Services.AddScoped<ICustomerOrderRepository, CustomerOrderRepository>();
 builder.Services.AddScoped<ICartRepository, CartRepository>();
-builder.Services.AddScoped<IShippingRepository, ShippingRepository>();
 
 // --- Admin ---
 builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
@@ -78,6 +104,10 @@ builder.Services.AddScoped<IProfileUserService, ProfileUserService>();
 builder.Services.AddScoped<ICustomerOrderService, CustomerOrderService>();
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IShippingService, ShippingService>();
+builder.Services.Configure<List<ShippingRegionSettings>>(builder.Configuration.GetSection("ShippingRegions"));
+
+
+builder.Services.AddScoped<IShippingCalculatorService, ShippingCalculatorService>();
 
 // --- Admin ---
 builder.Services.AddScoped<ICategoryService, CategoryService>();
@@ -85,11 +115,13 @@ builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IAdminOrderService, AdminOrderService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
+// --- Payments ---
+builder.Services.AddScoped<IMercadoPagoService, MercadoPagoService>();
+builder.Services.Configure<MercadoPagoSettings>(builder.Configuration.GetSection("MercadoPago"));
+
 // --- Validations ---
 builder.Services.AddValidatorsFromAssemblyContaining<CreateOrderFromCartRequestValidator>();
 builder.Services.AddFluentValidationAutoValidation();
-
-
 
 // ======================================================
 // AUTORIZAÇÃO
@@ -234,6 +266,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapRazorPages();    
+app.MapRazorPages();
 
 app.Run();
