@@ -8,7 +8,7 @@
         /// <summary>
         /// CEP de destino informado pelo usuário (somente números).
         /// </summary>
-        public string PostalCode { get; set; } = string.Empty;
+        public string Cep { get; set; } = string.Empty;
 
         /// <summary>
         /// Indica se o usuário deseja retirar pessoalmente na loja.

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using memoriza_backend.Helpers;
+using System;
 using System.Collections.Generic;
 
 namespace memoriza_backend.Models.Entities
@@ -28,9 +29,9 @@ namespace memoriza_backend.Models.Entities
         public List<OrderItem> Items { get; set; } = new();
 
         /// <summary>
-        /// Status do pedido (ex: Pending, Paid, Delivered, Cancelled).
+        /// Status do pedido, puxando do Helpers/OrderStatusCodes.
         /// </summary>
-        public string Status { get; set; } = string.Empty;
+        public string Status { get; set; } = OrderStatusCodes.Pending;
 
         /// <summary>
         /// Código da opção de frete usada (ex: SUDESTE, CENTRO_OESTE, RETIRADA).
