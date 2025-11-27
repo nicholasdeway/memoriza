@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using memoriza_backend.Models.DTO.User.Orders;
+using memoriza_backend.Models.DTO.Payments;
 using memoriza_backend.Services.Profile.OrderService;
 
 namespace memoriza_backend.Controller.User
@@ -18,9 +19,9 @@ namespace memoriza_backend.Controller.User
             _orderService = orderService;
         }
 
-        /// <summary>
-        /// Lista os pedidos do usuário autenticado.
-        /// </summary>
+        // ============================================================
+        // LISTAR MEUS PEDIDOS
+        // ============================================================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<OrderSummaryForUserResponse>>> GetMyOrders()
         {
@@ -29,9 +30,9 @@ namespace memoriza_backend.Controller.User
             return Ok(orders);
         }
 
-        /// <summary>
-        /// Retorna os detalhes de um pedido específico do usuário autenticado.
-        /// </summary>
+        // ============================================================
+        // DETALHES DO PEDIDO
+        // ============================================================
         [HttpGet("{orderId:guid}")]
         public async Task<ActionResult<OrderDetailForUserResponse>> GetOrderDetail(Guid orderId)
         {
@@ -45,11 +46,11 @@ namespace memoriza_backend.Controller.User
             return Ok(order);
         }
 
-        /// <summary>
-        /// Finaliza um pedido a partir do carrinho atual do usuário.
-        /// </summary>
+        // ============================================================
+        // CHECKOUT COMPLETO (Pedido + Mercado Pago)
+        // ============================================================
         [HttpPost("checkout")]
-        public async Task<ActionResult<OrderDetailForUserResponse>> Checkout(
+        public async Task<ActionResult<CheckoutInitResponse>> Checkout(
             [FromBody] CreateOrderFromCartRequest request)
         {
             if (!ModelState.IsValid)
@@ -57,17 +58,17 @@ namespace memoriza_backend.Controller.User
 
             var userId = GetUserId();
 
-            var result = await _orderService.CreateOrderFromCartAsync(userId, request);
+            var result = await _orderService.CheckoutAsync(userId, request);
 
-            if (!result.Success)
-                return BadRequest(result.Errors);
+            if (!result.Success || result.Data == null)
+                return BadRequest(result.Errors ?? "Falha ao iniciar checkout.");
 
             return Ok(result.Data);
         }
 
-        /// <summary>
-        /// Solicita reembolso de um pedido em até 7 dias, se permitido.
-        /// </summary>
+        // ============================================================
+        // SOLICITAR REEMBOLSO
+        // ============================================================
         [HttpPost("{orderId:guid}/refund")]
         public async Task<ActionResult<RefundStatusResponse>> RequestRefund(
             Guid orderId,
@@ -87,6 +88,9 @@ namespace memoriza_backend.Controller.User
             return Ok(result.Data);
         }
 
+        // ============================================================
+        // UTIL
+        // ============================================================
         private string GetUserId()
         {
             var id = User.FindFirstValue(ClaimTypes.NameIdentifier)

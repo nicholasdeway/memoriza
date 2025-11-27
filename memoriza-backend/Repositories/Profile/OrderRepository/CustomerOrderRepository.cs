@@ -227,5 +227,24 @@ namespace memoriza_backend.Repositories.Profile
                 Reason = reason
             });
         }
+
+        // ==========================================================
+        // NOVO: Atualizar status do pedido (Webhook Mercado Pago)
+        // ==========================================================
+        public async Task UpdateStatusAsync(Guid orderId, string newStatus)
+        {
+            const string sql = @"
+                UPDATE orders
+                SET status = @Status
+                WHERE id = @Id;
+            ";
+
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.ExecuteAsync(sql, new
+            {
+                Id = orderId,
+                Status = newStatus
+            });
+        }
     }
 }

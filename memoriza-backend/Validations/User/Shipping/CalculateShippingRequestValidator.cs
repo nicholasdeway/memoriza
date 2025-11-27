@@ -1,17 +1,28 @@
 ﻿using FluentValidation;
 using memoriza_backend.Models.DTO.User.Shipping;
 
-namespace memoriza_backend.Validations.User.Shipping
+public class CalculateShippingRequestValidator : AbstractValidator<CalculateShippingRequest>
 {
-    public class CalculateShippingRequestValidator : AbstractValidator<CalculateShippingRequest>
+    public CalculateShippingRequestValidator()
     {
-        public CalculateShippingRequestValidator()
+        // ❗ Só obriga o CEP se NÃO for retirada na loja
+        When(x => !x.PickupInStore, () =>
         {
-            RuleFor(x => x.PostalCode)
-                .NotEmpty().WithMessage("O CEP é obrigatório.")
-                .Matches(@"^\d{5}-?\d{3}$")
-                    .WithMessage("O CEP deve estar no formato 00000-000 ou 00000000.")
-                .When(x => !x.PickupInStore);
-        }
+            RuleFor(x => x.Cep)
+                .NotEmpty().WithMessage("CEP é obrigatório para entrega.")
+                .Must(IsValidCep).WithMessage("CEP inválido. Use o formato 12345-678 ou 12345678.");
+        });
+    }
+
+    private bool IsValidCep(string? cep)
+    {
+        if (string.IsNullOrWhiteSpace(cep))
+            return false;
+
+        // Remove hífen se existir
+        cep = cep.Replace("-", "");
+
+        // Deve ter exatamente 8 números
+        return cep.Length == 8 && cep.All(char.IsDigit);
     }
 }

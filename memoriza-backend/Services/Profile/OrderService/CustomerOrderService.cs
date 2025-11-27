@@ -8,6 +8,8 @@ using memoriza_backend.Models.DTO.User.Cart;
 using memoriza_backend.Models.DTO.User.Shipping;
 using memoriza_backend.Models.Entities;
 using memoriza_backend.Repositories.Interfaces;
+using memoriza_backend.Services.Payments;
+using memoriza_backend.Models.DTO.Payments;
 
 namespace memoriza_backend.Services.Profile.OrderService
 {
@@ -15,24 +17,28 @@ namespace memoriza_backend.Services.Profile.OrderService
     {
         private readonly ICustomerOrderRepository _orderRepository;
         private readonly ICartRepository _cartRepository;
+        private readonly IMercadoPagoService _mercadoPagoService;
 
         public CustomerOrderService(
             ICustomerOrderRepository orderRepository,
-            ICartRepository cartRepository)
+            ICartRepository cartRepository,
+            IMercadoPagoService mercadoPagoService
+        )
         {
             _orderRepository = orderRepository;
             _cartRepository = cartRepository;
+            _mercadoPagoService = mercadoPagoService;
         }
 
-        /// <summary>
-        /// Lista de pedidos do usuário (resumo) para tela "Meus pedidos".
-        /// </summary>
+        // ===========================================================
+        // GET ORDERS (resumo)
+        // ===========================================================
         public async Task<IEnumerable<OrderSummaryForUserResponse>> GetOrdersForUserAsync(string userId)
         {
             var orders = await _orderRepository.GetUserOrdersAsync(userId);
             var now = DateTime.UtcNow;
 
-            var result = orders.Select(order =>
+            return orders.Select(order =>
             {
                 var withinRefundWindow = (now - order.CreatedAt).TotalDays <= 7;
                 var isRefundable = order.IsRefundable && withinRefundWindow;
@@ -43,44 +49,40 @@ namespace memoriza_backend.Services.Profile.OrderService
                     OrderNumber = order.OrderNumber,
                     CreatedAt = order.CreatedAt,
                     TotalAmount = order.TotalAmount,
-                    Status = order.Status,
+
+                    // 👇 traduz automaticamente para PT-BR
+                    Status = OrderStatusMapper.ToDisplayLabel(order.Status),
+
                     IsRefundable = isRefundable,
                     RefundStatus = order.RefundStatus
                 };
             });
-
-            return result;
         }
 
-        /// <summary>
-        /// Detalhe de um pedido específico do usuário.
-        /// </summary>
+        // ===========================================================
+        // GET ORDER DETAIL
+        // ===========================================================
         public async Task<OrderDetailForUserResponse?> GetOrderDetailForUserAsync(string userId, Guid orderId)
         {
             var order = await _orderRepository.GetByIdAsync(orderId, userId);
-
-            if (order == null)
-                return null;
+            if (order == null) return null;
 
             var now = DateTime.UtcNow;
             var withinRefundWindow = (now - order.CreatedAt).TotalDays <= 7;
             var isRefundable = order.IsRefundable && withinRefundWindow;
 
-            // Mapeia itens do pedido -> CartItemDto
-            var itemDtos = (order.Items ?? new List<OrderItem>())
-                .Select(i => new CartItemDto
-                {
-                    CartItemId = i.Id,
-                    ProductId = i.ProductId,
-                    ProductName = i.ProductName,
-                    ThumbnailUrl = i.ThumbnailUrl,
-                    Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice
-                    // Subtotal é calculado pela propriedade do DTO (UnitPrice * Quantity)
-                })
-                .ToList();
+            var items = order.Items ?? new List<OrderItem>();
 
-            // Mapeia opção de frete -> ShippingOptionDto
+            var itemDtos = items.Select(i => new CartItemDto
+            {
+                CartItemId = i.Id,
+                ProductId = i.ProductId,
+                ProductName = i.ProductName,
+                ThumbnailUrl = i.ThumbnailUrl,
+                Quantity = i.Quantity,
+                UnitPrice = i.UnitPrice
+            }).ToList();
+
             ShippingOptionDto? shippingOption = null;
 
             if (!string.IsNullOrWhiteSpace(order.ShippingCode) ||
@@ -90,14 +92,13 @@ namespace memoriza_backend.Services.Profile.OrderService
                 {
                     Code = order.ShippingCode,
                     Name = order.ShippingName,
-                    // Você pode preencher Description depois se quiser algo mais amigável
                     Description = null,
                     Price = order.ShippingAmount,
                     EstimatedDays = order.ShippingEstimatedDays
                 };
             }
 
-            var response = new OrderDetailForUserResponse
+            return new OrderDetailForUserResponse
             {
                 OrderId = order.Id,
                 OrderNumber = order.OrderNumber,
@@ -105,37 +106,31 @@ namespace memoriza_backend.Services.Profile.OrderService
                 Subtotal = order.Subtotal,
                 ShippingAmount = order.ShippingAmount,
                 TotalAmount = order.TotalAmount,
-                Status = order.Status,
+
+                // 👇 traduz para PT-BR
+                Status = OrderStatusMapper.ToDisplayLabel(order.Status),
+
                 IsRefundable = isRefundable,
                 RefundStatus = order.RefundStatus,
                 Items = itemDtos,
                 ShippingOption = shippingOption
             };
-
-            return response;
         }
 
-        /// <summary>
-        /// Finaliza um pedido a partir do carrinho atual do usuário.
-        /// </summary>
+        // ===========================================================
+        // CREATE ORDER FROM CART (APENAS SALVAR)
+        // ===========================================================
         public async Task<ServiceResult<OrderDetailForUserResponse>> CreateOrderFromCartAsync(
             string userId,
             CreateOrderFromCartRequest request)
         {
-            // 1) Buscar carrinho ativo do usuário
             var cart = await _cartRepository.GetActiveCartAsync(userId);
             if (cart == null || cart.Items == null || cart.Items.Count == 0)
-            {
                 return ServiceResult<OrderDetailForUserResponse>.Fail("Carrinho vazio.");
-            }
 
-            // 2) Calcular subtotal
             var subtotal = cart.Items.Sum(i => i.Subtotal);
-
-            // 3) Calcular total
             var totalAmount = subtotal + request.ShippingAmount;
 
-            // 4) Montar entidade Order
             var order = new Order
             {
                 Id = Guid.NewGuid(),
@@ -145,14 +140,16 @@ namespace memoriza_backend.Services.Profile.OrderService
                 Subtotal = subtotal,
                 ShippingAmount = request.ShippingAmount,
                 TotalAmount = totalAmount,
-                Status = "Pending",
+
+                // 👇 agora padronizado
+                Status = OrderStatusCodes.Pending,
+
                 ShippingCode = request.ShippingCode,
                 ShippingName = request.ShippingName,
                 ShippingEstimatedDays = request.ShippingEstimatedDays,
                 IsRefundable = true
             };
 
-            // 5) Montar itens do pedido
             var orderItems = cart.Items.Select(i => new OrderItem
             {
                 Id = Guid.NewGuid(),
@@ -165,43 +162,10 @@ namespace memoriza_backend.Services.Profile.OrderService
                 Subtotal = i.Subtotal
             }).ToList();
 
-            // 6) Persistir no banco
             await _orderRepository.CreateAsync(order);
             await _orderRepository.AddOrderItemsAsync(orderItems);
-
-            // 7) Limpar itens do carrinho
             await _cartRepository.ClearCartAsync(cart.Id);
 
-            // 8) Montar DTO de itens
-            var itemDtos = orderItems
-                .Select(i => new CartItemDto
-                {
-                    CartItemId = i.Id,
-                    ProductId = i.ProductId,
-                    ProductName = i.ProductName,
-                    ThumbnailUrl = i.ThumbnailUrl,
-                    Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice
-                })
-                .ToList();
-
-            // 9) Montar DTO de frete
-            ShippingOptionDto? shippingOption = null;
-
-            if (!string.IsNullOrWhiteSpace(order.ShippingCode) ||
-                !string.IsNullOrWhiteSpace(order.ShippingName))
-            {
-                shippingOption = new ShippingOptionDto
-                {
-                    Code = order.ShippingCode,
-                    Name = order.ShippingName,
-                    Description = null,
-                    Price = order.ShippingAmount,
-                    EstimatedDays = order.ShippingEstimatedDays
-                };
-            }
-
-            // 10) Montar resposta
             var response = new OrderDetailForUserResponse
             {
                 OrderId = order.Id,
@@ -210,19 +174,100 @@ namespace memoriza_backend.Services.Profile.OrderService
                 Subtotal = order.Subtotal,
                 ShippingAmount = order.ShippingAmount,
                 TotalAmount = order.TotalAmount,
-                Status = order.Status,
+
+                // 👇 traduz para PT-BR
+                Status = OrderStatusMapper.ToDisplayLabel(order.Status),
+
                 IsRefundable = order.IsRefundable,
-                RefundStatus = order.RefundStatus,
-                Items = itemDtos,
-                ShippingOption = shippingOption
+                Items = orderItems.Select(i => new CartItemDto
+                {
+                    CartItemId = i.Id,
+                    ProductId = i.ProductId,
+                    ProductName = i.ProductName,
+                    ThumbnailUrl = i.ThumbnailUrl,
+                    Quantity = i.Quantity,
+                    UnitPrice = i.UnitPrice
+                }).ToList()
             };
 
             return ServiceResult<OrderDetailForUserResponse>.Ok(response);
         }
 
-        /// <summary>
-        /// Solicita reembolso de um pedido (RF-08).
-        /// </summary>
+        // ===========================================================
+        // CHECKOUT + MERCADO PAGO
+        // ===========================================================
+        public async Task<ServiceResult<CheckoutInitResponse>> CheckoutAsync(
+            string userId,
+            CreateOrderFromCartRequest request)
+        {
+            var cart = await _cartRepository.GetActiveCartAsync(userId);
+            if (cart == null || cart.Items == null || cart.Items.Count == 0)
+            {
+                return ServiceResult<CheckoutInitResponse>.Fail("Carrinho vazio.");
+            }
+
+            var subtotal = cart.Items.Sum(i => i.Subtotal);
+            var totalAmount = subtotal + request.ShippingAmount;
+
+            var order = new Order
+            {
+                Id = Guid.NewGuid(),
+                OrderNumber = $"MEM-{DateTime.UtcNow.Ticks}",
+                UserId = userId,
+                CreatedAt = DateTime.UtcNow,
+                Subtotal = subtotal,
+                ShippingAmount = request.ShippingAmount,
+                TotalAmount = totalAmount,
+
+                // 👇 padronizado
+                Status = OrderStatusCodes.Pending,
+
+                ShippingCode = request.ShippingCode,
+                ShippingName = request.ShippingName,
+                ShippingEstimatedDays = request.ShippingEstimatedDays,
+                IsRefundable = true
+            };
+
+            var orderItems = cart.Items.Select(i => new OrderItem
+            {
+                Id = Guid.NewGuid(),
+                OrderId = order.Id,
+                ProductId = i.ProductId,
+                ProductName = i.ProductName,
+                ThumbnailUrl = i.ThumbnailUrl,
+                Quantity = i.Quantity,
+                UnitPrice = i.UnitPrice,
+                Subtotal = i.Subtotal
+            }).ToList();
+
+            await _orderRepository.CreateAsync(order);
+            await _orderRepository.AddOrderItemsAsync(orderItems);
+            await _cartRepository.ClearCartAsync(cart.Id);
+
+            var preference = await _mercadoPagoService.CreatePreferenceForOrderAsync(order, orderItems);
+
+            if (preference == null)
+            {
+                return ServiceResult<CheckoutInitResponse>.Fail("Erro ao iniciar pagamento com Mercado Pago.");
+            }
+
+            var checkoutResponse = new CheckoutInitResponse
+            {
+                OrderId = order.Id,
+                OrderNumber = order.OrderNumber,
+                TotalAmount = order.TotalAmount,
+                PublicKey = preference.PublicKey,
+                PreferenceId = preference.PreferenceId,
+                InitPoint = preference.InitPoint,
+                SandboxInitPoint = preference.SandboxInitPoint
+            };
+
+            return ServiceResult<CheckoutInitResponse>.Ok(checkoutResponse);
+        }
+
+        // ===========================================================
+        // REFUND REQUEST
+        // ===========================================================
         public async Task<ServiceResult<RefundStatusResponse>> RequestRefundAsync(
             string userId,
             RequestRefundRequest request)
@@ -241,36 +286,27 @@ namespace memoriza_backend.Services.Profile.OrderService
             if (!isRefundable)
             {
                 return ServiceResult<RefundStatusResponse>.Fail(
-                    "Prazo para reembolso expirado ou pedido não é elegível para reembolso."
+                    "Prazo para reembolso expirado ou pedido não é elegível."
                 );
             }
 
-            if (!string.IsNullOrEmpty(order.RefundStatus) &&
+            if (!string.IsNullOrWhiteSpace(order.RefundStatus) &&
                 !string.Equals(order.RefundStatus, "None", StringComparison.OrdinalIgnoreCase))
             {
                 return ServiceResult<RefundStatusResponse>.Fail(
-                    "Já existe uma solicitação de reembolso para este pedido."
+                    "Já existe uma solicitação de reembolso."
                 );
             }
 
-            var newStatus = "Requested";
-            await _orderRepository.UpdateRefundStatusAsync(order.Id, newStatus, request.Reason);
+            await _orderRepository.UpdateRefundStatusAsync(order.Id, "Requested", request.Reason);
 
-            order.RefundStatus = newStatus;
-            order.RefundReason = request.Reason;
-            order.RefundRequestedAt = now;
-            order.RefundProcessedAt = null;
-
-            var response = new RefundStatusResponse
+            return ServiceResult<RefundStatusResponse>.Ok(new RefundStatusResponse
             {
                 OrderId = order.Id,
-                Status = order.RefundStatus ?? newStatus,
-                Message = order.RefundReason,
-                RequestedAt = order.RefundRequestedAt ?? now,
-                ProcessedAt = order.RefundProcessedAt
-            };
-
-            return ServiceResult<RefundStatusResponse>.Ok(response);
+                Status = "Requested",
+                Message = request.Reason,
+                RequestedAt = now
+            });
         }
     }
 }
