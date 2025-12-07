@@ -1,11 +1,10 @@
 "use client";
 
 import type React from "react";
-import { Suspense } from "react";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { ArrowRight, Loader2, Eye, EyeOff, CheckCircle } from "lucide-react";
@@ -27,8 +26,7 @@ function mapGoogleErrorToMessage(code: string): string {
   }
 }
 
-// 🔹 Componente com toda a lógica original
-function AuthPageInner() {
+export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -51,7 +49,6 @@ function AuthPageInner() {
 
   const { login, register } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const formatPhone = (value: string): string => {
     const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -150,12 +147,10 @@ function AuthPageInner() {
         });
 
         if (result.success) {
-          // NÃO loga automaticamente: apenas mostra mensagem e troca para Login depois de 2.5s
           setSuccessMessage(
             "Conta criada com sucesso! Redirecionando para o login..."
           );
 
-          // limpa senhas para segurança
           setFormData((prev) => ({
             ...prev,
             senha: "",
@@ -175,13 +170,18 @@ function AuthPageInner() {
     }
   };
 
+  // 🔹 Agora sem useSearchParams: usamos window.location.search
   useEffect(() => {
-    const googleError = searchParams.get("googleError");
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const googleError = params.get("googleError");
+
     if (googleError) {
       setError(mapGoogleErrorToMessage(googleError));
       setSuccessMessage("");
     }
-  }, [searchParams]);
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -497,27 +497,5 @@ function AuthPageInner() {
 
       <Footer />
     </div>
-  );
-}
-
-// 🔹 Wrapper com Suspense: é ESSE que o Next usa como page
-export default function AuthPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex flex-col">
-          <Header />
-          <div className="flex-1 flex items-center justify-center py-12 px-4">
-            <div className="flex flex-col items-center gap-3 text-foreground/70">
-              <Loader2 className="w-6 h-6 animate-spin" />
-              <p className="text-sm">Carregando...</p>
-            </div>
-          </div>
-          <Footer />
-        </div>
-      }
-    >
-      <AuthPageInner />
-    </Suspense>
   );
 }
