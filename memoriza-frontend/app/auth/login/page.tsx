@@ -27,6 +27,7 @@ function mapGoogleErrorToMessage(code: string): string {
   }
 }
 
+// 🔹 Componente com toda a lógica original
 function AuthPageInner() {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -499,7 +500,7 @@ function AuthPageInner() {
   );
 }
 
-// 🔹 Componente exportado com Suspense envolvendo o uso de useSearchParams
+// 🔹 Wrapper com Suspense: é ESSE que o Next usa como page
 export default function AuthPage() {
   return (
     <Suspense
