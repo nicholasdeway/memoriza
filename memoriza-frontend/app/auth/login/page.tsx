@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { Suspense } from "react";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -26,7 +27,8 @@ function mapGoogleErrorToMessage(code: string): string {
   }
 }
 
-export default function AuthPage() {
+// 🔹 Componente com toda a lógica original
+function AuthPageInner() {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -187,7 +189,6 @@ export default function AuthPage() {
 
       <div className="flex-1 flex items-center justify-center py-12 px-4">
         <div className="w-full max-w-md">
-
           {/* Toggle */}
           <div className="flex gap-4 mb-4">
             <button
@@ -496,5 +497,27 @@ export default function AuthPage() {
 
       <Footer />
     </div>
+  );
+}
+
+// 🔹 Wrapper com Suspense: é ESSE que o Next usa como page
+export default function AuthPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <div className="flex-1 flex items-center justify-center py-12 px-4">
+            <div className="flex flex-col items-center gap-3 text-foreground/70">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <p className="text-sm">Carregando...</p>
+            </div>
+          </div>
+          <Footer />
+        </div>
+      }
+    >
+      <AuthPageInner />
+    </Suspense>
   );
 }
