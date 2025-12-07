@@ -2,14 +2,14 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { ArrowRight, Loader2, Lock, CheckCircle, Eye, EyeOff } from "lucide-react"
 
-export default function ResetPasswordPage() {
+function ResetPasswordPageInner() {
   const [formData, setFormData] = useState({
     email: "",
     token: "",
@@ -260,7 +260,9 @@ export default function ResetPasswordPage() {
                     <li className={/[a-z]/.test(formData.newPassword) ? "text-green-600" : ""}>
                       • Pelo menos uma letra minúscula
                     </li>
-                    <li className={/[0-9]/.test(formData.newPassword) ? "text-green-600" : ""}>• Pelo menos um número</li>
+                    <li className={/[0-9]/.test(formData.newPassword) ? "text-green-600" : ""}>
+                      • Pelo menos um número
+                    </li>
                   </ul>
                 </div>
 
@@ -297,5 +299,27 @@ export default function ResetPasswordPage() {
 
       <Footer />
     </div>
+  )
+}
+
+// useSearchParams
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <div className="flex-1 flex items-center justify-center py-12 px-4">
+            <div className="flex flex-col items-center gap-3 text-foreground/70">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <p className="text-sm">Carregando página de redefinição...</p>
+            </div>
+          </div>
+          <Footer />
+        </div>
+      }
+    >
+      <ResetPasswordPageInner />
+    </Suspense>
   )
 }
