@@ -93,7 +93,8 @@ builder.Services.AddCors(options =>
             .WithOrigins(
                 "http://localhost:3000",
                 "https://localhost:3000",
-                "https://memoriza-one.vercel.app"
+                "https://memoriza-one.vercel.app",
+                "https://memoriza-99qigomug-nd320538-1773s-projects.vercel.app"
             )
             .AllowAnyHeader()
             .AllowAnyMethod();
