@@ -1,34 +1,29 @@
-"use client"
-
-import { useEffect, useState } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { CheckCircle, Package, ArrowRight } from "lucide-react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 
-export default function CheckoutSuccessPage() {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const [orderId, setOrderId] = useState<string | null>(null)
+interface CheckoutPageProps {
+  searchParams: { [key: string]: string | string[] | undefined }
+}
 
-  useEffect(() => {
-    // Mercado Pago envia parâmetros na URL
-    const paymentId = searchParams.get("payment_id")
-    const status = searchParams.get("status")
-    const externalReference = searchParams.get("external_reference")
-    
-    console.log("✅ Pagamento aprovado:", { paymentId, status, externalReference })
-    
-    if (externalReference) {
-      setOrderId(externalReference)
-    }
-  }, [searchParams])
+export default function CheckoutSuccessPage({ searchParams }: CheckoutPageProps) {
+  const paymentId = searchParams.payment_id
+  const status = searchParams.status
+  const externalReferenceRaw = searchParams.external_reference
+
+  const externalReference = Array.isArray(externalReferenceRaw)
+    ? externalReferenceRaw[0]
+    : externalReferenceRaw ?? null
+
+  const orderId = externalReference ?? null
+
+  console.log("✅ Pagamento aprovado:", { paymentId, status, externalReference })
 
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      
+
       <div className="flex-1 flex items-center justify-center px-4 py-12 bg-gradient-to-b from-green-50 to-background">
         <div className="max-w-md w-full text-center space-y-6">
           {/* Ícone de sucesso */}
@@ -66,7 +61,7 @@ export default function CheckoutSuccessPage() {
             <h3 className="font-medium text-blue-900">Próximos passos:</h3>
             <ul className="text-sm text-blue-800 space-y-1">
               <li>✓ Você receberá um e-mail de confirmação</li>
-              <li>✓ Acompanhe seu pedido em "Meus Pedidos"</li>
+              <li>✓ Acompanhe seu pedido em &quot;Meus Pedidos&quot;</li>
               <li>✓ Enviaremos atualizações sobre a entrega</li>
             </ul>
           </div>
@@ -82,7 +77,7 @@ export default function CheckoutSuccessPage() {
                 <ArrowRight size={18} />
               </Link>
             )}
-            
+
             <Link
               href="/products"
               className="w-full border-2 border-primary text-primary px-6 py-3 rounded-lg font-medium hover:bg-primary/5 transition-colors block"

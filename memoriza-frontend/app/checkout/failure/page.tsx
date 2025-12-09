@@ -1,32 +1,29 @@
-"use client"
-
-import { useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { XCircle, RefreshCw, ArrowLeft } from "lucide-react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 
-export default function CheckoutFailurePage() {
-  const searchParams = useSearchParams()
-  const [orderId, setOrderId] = useState<string | null>(null)
+interface CheckoutPageProps {
+  searchParams: { [key: string]: string | string[] | undefined }
+}
 
-  useEffect(() => {
-    const paymentId = searchParams.get("payment_id")
-    const status = searchParams.get("status")
-    const externalReference = searchParams.get("external_reference")
-    
-    console.log("❌ Pagamento recusado:", { paymentId, status, externalReference })
-    
-    if (externalReference) {
-      setOrderId(externalReference)
-    }
-  }, [searchParams])
+export default function CheckoutFailurePage({ searchParams }: CheckoutPageProps) {
+  const paymentId = searchParams.payment_id
+  const status = searchParams.status
+  const externalReferenceRaw = searchParams.external_reference
+
+  const externalReference = Array.isArray(externalReferenceRaw)
+    ? externalReferenceRaw[0]
+    : externalReferenceRaw ?? null
+
+  const orderId = externalReference ?? null
+
+  console.log("❌ Pagamento recusado:", { paymentId, status, externalReference })
 
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      
+
       <div className="flex-1 flex items-center justify-center px-4 py-12 bg-gradient-to-b from-red-50 to-background">
         <div className="max-w-md w-full text-center space-y-6">
           {/* Ícone de erro */}
@@ -68,7 +65,7 @@ export default function CheckoutFailurePage() {
                 Tentar Novamente
               </Link>
             )}
-            
+
             <Link
               href="/cart"
               className="w-full border-2 border-border text-foreground px-6 py-3 rounded-lg font-medium hover:bg-muted transition-colors flex items-center justify-center gap-2"

@@ -1,32 +1,29 @@
-"use client"
-
-import { useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Clock, Package, ArrowRight } from "lucide-react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 
-export default function CheckoutPendingPage() {
-  const searchParams = useSearchParams()
-  const [orderId, setOrderId] = useState<string | null>(null)
+interface CheckoutPageProps {
+  searchParams: { [key: string]: string | string[] | undefined }
+}
 
-  useEffect(() => {
-    const paymentId = searchParams.get("payment_id")
-    const status = searchParams.get("status")
-    const externalReference = searchParams.get("external_reference")
-    
-    console.log("⏳ Pagamento pendente:", { paymentId, status, externalReference })
-    
-    if (externalReference) {
-      setOrderId(externalReference)
-    }
-  }, [searchParams])
+export default function CheckoutPendingPage({ searchParams }: CheckoutPageProps) {
+  const paymentId = searchParams.payment_id
+  const status = searchParams.status
+  const externalReferenceRaw = searchParams.external_reference
+
+  const externalReference = Array.isArray(externalReferenceRaw)
+    ? externalReferenceRaw[0]
+    : externalReferenceRaw ?? null
+
+  const orderId = externalReference ?? null
+
+  console.log("⏳ Pagamento pendente:", { paymentId, status, externalReference })
 
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      
+
       <div className="flex-1 flex items-center justify-center px-4 py-12 bg-gradient-to-b from-yellow-50 to-background">
         <div className="max-w-md w-full text-center space-y-6">
           {/* Ícone de pendente */}
@@ -65,7 +62,7 @@ export default function CheckoutPendingPage() {
             <ul className="text-sm text-yellow-800 space-y-1">
               <li>⏳ Aguardando confirmação do pagamento</li>
               <li>📧 Você receberá um e-mail quando for aprovado</li>
-              <li>🔍 Acompanhe o status em "Meus Pedidos"</li>
+              <li>🔍 Acompanhe o status em &quot;Meus Pedidos&quot;</li>
               <li>⚡ PIX: aprovação em até 1 hora</li>
               <li>📄 Boleto: aprovação em 1-3 dias úteis</li>
             </ul>
@@ -82,7 +79,7 @@ export default function CheckoutPendingPage() {
                 <ArrowRight size={18} />
               </Link>
             )}
-            
+
             <Link
               href="/products"
               className="w-full border-2 border-primary text-primary px-6 py-3 rounded-lg font-medium hover:bg-primary/5 transition-colors block"
