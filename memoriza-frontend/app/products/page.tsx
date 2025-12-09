@@ -6,7 +6,6 @@ import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useEffect, useMemo, useState } from "react";
 import { Filter, ShoppingCart } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import {
   Sheet,
   SheetContent,
@@ -133,8 +132,11 @@ const generateSlug = (nome: string) => {
 };
 
 export default function ProductsPage() {
-  const searchParams = useSearchParams();
-  const categorySlugFromUrl = searchParams.get("category");
+  // slug vindo da URL (?category=...)
+  const [categorySlugFromUrl, setCategorySlugFromUrl] = useState<string | null>(
+    null,
+  );
+
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("Todos");
   const [selectedPrice, setSelectedPrice] = useState<string>("Todas");
   const [sortBy, setSortBy] = useState<SortOption>("popular");
@@ -155,6 +157,18 @@ export default function ProductsPage() {
   // Paginação - 24 produtos por página na tela de produtos
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 24;
+
+  // ===== Ler category da URL no client (sem useSearchParams) =====
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const categoryFromQuery = params.get("category");
+
+    if (categoryFromQuery) {
+      setCategorySlugFromUrl(categoryFromQuery);
+    }
+  }, []);
 
   // ===== Fetch filtros + produtos =====
   useEffect(() => {
@@ -248,9 +262,8 @@ export default function ProductsPage() {
   useEffect(() => {
     if (!categorySlugFromUrl || categories.length === 0) return;
 
-    // Encontrar categoria pelo slug
     const matchedCategory = categories.find(
-      (cat) => generateSlug(cat.name) === categorySlugFromUrl
+      (cat) => generateSlug(cat.name) === categorySlugFromUrl,
     );
 
     if (matchedCategory) {
@@ -309,7 +322,6 @@ export default function ProductsPage() {
     ...categories.map((c) => ({ id: c.id, label: c.name })),
   ];
 
-  // Helpers para exibir labels de tamanho
   const getSizeLabel = (product: Product) => {
     const names = product.sizeIds
       .map((id) => sizes.find((s) => s.id === id)?.name)
@@ -317,7 +329,6 @@ export default function ProductsPage() {
     return names.join(", ");
   };
 
-  // Função para filtrar por faixa de preço
   const matchPriceRange = (product: Product, range: string) => {
     if (range === "Todas") return true;
 
@@ -341,31 +352,25 @@ export default function ProductsPage() {
     }
   };
 
-  // Produtos filtrados
   const filteredProducts = useMemo(() => {
     let list = products.filter((p) => {
-      // Categoria
       const matchCategory =
         selectedCategoryId === "Todos" || p.categoryId === selectedCategoryId;
 
-      // Tamanho
       const matchSize =
         selectedSizeIds.length === 0 ||
         p.sizeIds.some((id) => selectedSizeIds.includes(id));
 
-      // Cor
       const matchColor =
         selectedColorIds.length === 0 ||
         p.colorIds.some((id) => selectedColorIds.includes(id));
 
-      // Preço
       const matchPrice = matchPriceRange(p, selectedPrice);
 
       return matchCategory && matchSize && matchColor && matchPrice;
     });
 
-    // Ordenação
-    list = [...list]; // cópia para não mutar state
+    list = [...list];
 
     list.sort((a, b) => {
       const aBase = a.price;
@@ -396,7 +401,6 @@ export default function ProductsPage() {
           return b.name.localeCompare(a.name, "pt-BR");
         case "popular":
         default:
-          // Por enquanto, tratamos "popular" como mais recentes
           return (
             new Date(b.createdAt).getTime() -
             new Date(a.createdAt).getTime()
@@ -414,44 +418,56 @@ export default function ProductsPage() {
     sortBy,
   ]);
 
-  // Resetar para página 1 quando os filtros mudarem
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedCategoryId, selectedSizeIds, selectedColorIds, selectedPrice, sortBy]);
 
-  // Calcular produtos paginados
   const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
 
-  // Gerar números de página para exibir
   const getPageNumbers = () => {
     const pages: number[] = [];
     const maxPagesToShow = 5;
-    
+
     if (totalPages <= maxPagesToShow) {
-      // Mostrar todas as páginas se forem poucas
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
     } else {
-      // Lógica para mostrar páginas com reticências
       if (currentPage <= 3) {
         pages.push(1, 2, 3, 4, -1, totalPages);
       } else if (currentPage >= totalPages - 2) {
-        pages.push(1, -1, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+        pages.push(
+          1,
+          -1,
+          totalPages - 3,
+          totalPages - 2,
+          totalPages - 1,
+          totalPages,
+        );
       } else {
-        pages.push(1, -1, currentPage - 1, currentPage, currentPage + 1, -1, totalPages);
+        pages.push(
+          1,
+          -1,
+          currentPage - 1,
+          currentPage,
+          currentPage + 1,
+          -1,
+          totalPages,
+        );
       }
     }
-    
+
     return pages;
   };
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   return (
@@ -459,9 +475,7 @@ export default function ProductsPage() {
       <Header />
       {/* Cabeçalho da Página */}
       <section className="py-8 px-4 ">
-        <div className="max-w-7xl mx-auto">
-
-        </div>
+        <div className="max-w-7xl mx-auto" />
       </section>
 
       <div className="flex-1 py-8 px-4">
@@ -738,7 +752,9 @@ export default function ProductsPage() {
                                   name="price-mobile"
                                   value={range}
                                   checked={selectedPrice === range}
-                                  onChange={(e) => setSelectedPrice(e.target.value)}
+                                  onChange={(e) =>
+                                    setSelectedPrice(e.target.value)
+                                  }
                                   className="rounded-sm"
                                 />
                                 <span className="text-sm text-foreground/70">
@@ -824,14 +840,17 @@ export default function ProductsPage() {
                                   <input
                                     type="checkbox"
                                     className="rounded-sm"
-                                    checked={selectedColorIds.includes(color.id)}
+                                    checked={selectedColorIds.includes(
+                                      color.id,
+                                    )}
                                     onChange={() => toggleColor(color.id)}
                                   />
                                   <span className="flex items-center space-x-2 text-sm text-foreground/70">
                                     <span
                                       className="w-4 h-4 rounded-full border border-border"
                                       style={{
-                                        backgroundColor: color.hex || "#ffffff",
+                                        backgroundColor:
+                                          color.hex || "#ffffff",
                                       }}
                                     />
                                     <span>
@@ -917,9 +936,9 @@ export default function ProductsPage() {
                 </div>
               ) : (
                 <>
-                  {/* 🔹 GRID COM 5 COLUNAS EM TELAS GRANDES */}
+                  {/* GRID COM 4 COLUNAS EM TELAS GRANDES */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {filteredProducts.map((product) => {
+                    {paginatedProducts.map((product) => {
                       const sizeLabel = getSizeLabel(product);
 
                       const basePrice = product.price;
@@ -947,13 +966,15 @@ export default function ProductsPage() {
                         .filter((c): c is Color => Boolean(c));
 
                       return (
-                        // CARD NO ESTILO KABUM
                         <div
                           key={product.id}
-                          className="group flex flex-col h-full bg-white rounded-lg border border-transparent shadow-sm hover:shadow-md transition-all p-2">
-                          <Link href={`/products/${product.id}`} className="block">
-
-                            {/* BLOCO DA IMAGEM - ALTURA FIXA, ESTILO KABUM */}
+                          className="group flex flex-col h-full bg-white rounded-lg border border-transparent shadow-sm hover:shadow-md transition-all p-2"
+                        >
+                          <Link
+                            href={`/products/${product.id}`}
+                            className="block"
+                          >
+                            {/* Imagem */}
                             <div className="relative w-full h-52 md:h-56 bg-muted rounded-lg overflow-hidden mb-3">
                               <img
                                 src={product.imageUrl || "/placeholder.svg"}
@@ -967,40 +988,40 @@ export default function ProductsPage() {
                               )}
                             </div>
 
-                            {/* 1. TÍTULO */}
+                            {/* Título */}
                             <h3 className="font-medium text-foreground group-hover:text-accent transition-colors line-clamp-2 min-h-[2.75rem]">
                               {product.name}
                             </h3>
 
-                            {/* 2. CORES (BOLINHAS) */}
+                            {/* Cores */}
                             {productColors.length > 0 && (
                               <div className="mt-1 flex items-center gap-1">
                                 {productColors.map((color) => (
                                   <span
                                     key={color.id}
                                     className="w-4 h-4 rounded-full border border-border"
-                                    style={{ backgroundColor: color.hex || "#ffffff" }}
+                                    style={{
+                                      backgroundColor: color.hex || "#ffffff",
+                                    }}
                                   />
                                 ))}
                               </div>
                             )}
 
-                            {/* 3. TAMANHOS */}
+                            {/* Tamanhos */}
                             {sizeLabel && (
                               <p className="mt-1 text-xs text-foreground/60 line-clamp-1">
                                 {sizeLabel}
                               </p>
                             )}
 
-                            {/* 4. PREÇO COM DESCONTO / 5. PREÇO ORIGINAL */}
+                            {/* Preços */}
                             <div className="mt-3 space-y-1">
                               {hasDiscount ? (
                                 <>
-                                  {/* Preço com desconto (destacado) */}
                                   <p className="text-sm font-semibold text-foreground">
                                     {formatCurrency(finalPrice)}
                                   </p>
-                                  {/* Preço original riscado */}
                                   <p className="text-xs text-foreground/50 line-through">
                                     {formatCurrency(basePrice)}
                                   </p>
@@ -1013,7 +1034,7 @@ export default function ProductsPage() {
                             </div>
                           </Link>
 
-                          {/* 6. BOTÃO DE COMPRAR */}
+                          {/* Botão Comprar */}
                           <div className="mt-auto pt-3">
                             <Link
                               href={`/products/${product.id}`}
@@ -1038,16 +1059,19 @@ export default function ProductsPage() {
                       >
                         Anterior
                       </button>
-                      
+
                       {getPageNumbers().map((page, index) => {
                         if (page === -1) {
                           return (
-                            <span key={`ellipsis-${index}`} className="px-2 text-foreground/60">
+                            <span
+                              key={`ellipsis-${index}`}
+                              className="px-2 text-foreground/60"
+                            >
                               ...
                             </span>
                           );
                         }
-                        
+
                         return (
                           <button
                             key={page}
@@ -1062,7 +1086,7 @@ export default function ProductsPage() {
                           </button>
                         );
                       })}
-                      
+
                       <button
                         onClick={() => handlePageChange(currentPage + 1)}
                         disabled={currentPage === totalPages}
