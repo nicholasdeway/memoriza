@@ -424,15 +424,15 @@ export default function ProductDetailPage({
               <div className="border-t border-b border-border py-6 space-y-4">
                 <div className="flex items-baseline gap-3">
                   <span className="text-4xl font-medium text-primary">
-                    R$ {product.preco.toFixed(2)}
+                    R$ {(product.precoPromocional ?? product.preco).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                   {product.precoPromocional && (
                     <>
                       <span className="text-lg text-foreground/50 line-through">
-                        R$ {product.precoPromocional.toFixed(2)}
+                        R$ {product.preco.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                       <span className="text-sm bg-accent text-accent-foreground px-2 py-1 rounded">
-                        -20%
+                        -{Math.round(((product.preco - product.precoPromocional) / product.preco) * 100)}%
                       </span>
                     </>
                   )}

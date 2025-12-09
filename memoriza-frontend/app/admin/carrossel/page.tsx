@@ -381,84 +381,87 @@ export default function AdminCarrossel() {
                       <div
                         ref={provided.innerRef}
                         {...provided.draggableProps}
-                        className={`bg-card border border-border rounded-lg p-4 flex items-center gap-4 shadow-sm ${
+                        className={`bg-card border border-border rounded-lg p-4 ${
                           snapshot.isDragging ? "opacity-50" : ""
                         }`}
                       >
-                        {canEdit && (
-                          <div
-                            {...provided.dragHandleProps}
-                            className="text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing"
-                          >
-                            <GripVertical size={20} />
-                          </div>
-                        )}
-
-                        <div className="w-32 h-20 relative rounded-md overflow-hidden bg-muted flex-shrink-0">
-                          {item.imageUrl ? (
-                            <Image
-                              src={item.imageUrl}
-                              alt={item.title}
-                              fill
-                              className="object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                              <ImageIcon size={24} />
+                        <div className="flex items-start gap-4">
+                          {canEdit && (
+                            <div
+                              {...provided.dragHandleProps}
+                              className="text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing mt-1"
+                            >
+                              <GripVertical size={20} />
                             </div>
                           )}
-                        </div>
 
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-foreground truncate">
-                            {item.title || "(Sem título)"}
-                          </h3>
-                          <p className="text-sm text-muted-foreground truncate">
-                            {item.subtitle}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded-full ${
-                                item.isActive
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-gray-100 text-gray-700"
-                              }`}
-                            >
-                              {item.isActive ? "Ativo" : "Inativo"}
-                            </span>
-                            {index === 0 && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                                Principal
-                              </span>
+                          <div className="w-32 h-20 relative rounded-md overflow-hidden bg-muted flex-shrink-0">
+                            {item.imageUrl ? (
+                              <Image
+                                src={item.imageUrl}
+                                alt={item.title}
+                                fill
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                                <ImageIcon size={24} />
+                              </div>
                             )}
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                              {TEMPLATE_LABELS[item.templateType] ??
-                                "Padrão (Texto + Imagem)"}
-                            </span>
                           </div>
-                        </div>
 
-                        <div className="flex items-center gap-2">
-                          {canEdit && (
-                            <button
-                              onClick={() => handleOpenModal(item)}
-                              className="p-2 text-foreground/60 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                              title="Editar"
-                            >
-                              <Edit2 size={18} />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button
-                              onClick={() =>
-                                setDeleteDialog({ open: true, id: item.id })
-                              }
-                              className="p-2 text-foreground/60 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Excluir"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          )}
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-medium text-foreground truncate mb-1">
+                              {item.title || "(Sem título)"}
+                            </h3>
+                            <p className="text-sm text-muted-foreground truncate mb-2">
+                              {item.subtitle}
+                            </p>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span
+                                  className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${
+                                    item.isActive
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-gray-100 text-gray-700"
+                                  }`}
+                                >
+                                  {item.isActive ? "Ativo" : "Inativo"}
+                                </span>
+                                {index === 0 && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 whitespace-nowrap">
+                                    Principal
+                                  </span>
+                                )}
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 whitespace-nowrap">
+                                  {TEMPLATE_LABELS[item.templateType] ??
+                                    "Padrão (Texto + Imagem)"}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 sm:ml-auto">
+                                {canEdit && (
+                                  <button
+                                    onClick={() => handleOpenModal(item)}
+                                    className="p-2 text-foreground/60 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                                    title="Editar"
+                                  >
+                                    <Edit2 size={18} />
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    onClick={() =>
+                                      setDeleteDialog({ open: true, id: item.id })
+                                    }
+                                    className="p-2 text-foreground/60 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Excluir"
+                                  >
+                                    <Trash2 size={18} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}

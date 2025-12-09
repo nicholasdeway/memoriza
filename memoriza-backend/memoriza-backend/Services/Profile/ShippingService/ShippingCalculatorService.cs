@@ -1,4 +1,8 @@
-﻿using memoriza_backend.Models.DTO.User.Shipping;
+﻿using System;
+using System.Linq;
+using System.Threading.Tasks;
+using memoriza_backend.Models.DTO.User.Shipping;
+using memoriza_backend.Repositories.Shipping;
 using memoriza_backend.Settings;
 using Microsoft.Extensions.Options;
 
@@ -6,18 +10,24 @@ namespace memoriza_backend.Services.Profile.ShippingService
 {
     public class ShippingCalculatorService : IShippingCalculatorService
     {
-        private readonly List<ShippingRegionSettings> _regions;
+        private readonly List<ShippingRegionSettings> _regionRanges;
+        private readonly IShippingRepository _shippingRepository;
 
-        public ShippingCalculatorService(IOptions<List<ShippingRegionSettings>> options)
+        public ShippingCalculatorService(
+            IOptions<List<ShippingRegionSettings>> regionOptions,
+            IShippingRepository shippingRepository)
         {
-            _regions = options.Value;
+            _regionRanges = regionOptions.Value;
+            _shippingRepository = shippingRepository;
         }
 
-        public ShippingOptionDto? GetShippingByCep(string cep)
+        public async Task<ShippingOptionDto?> GetShippingByCepAsync(string cep)
         {
             var numericCep = NormalizeCep(cep);
 
-            foreach (var region in _regions)
+            string? regionCode = null;
+
+            foreach (var region in _regionRanges)
             {
                 foreach (var range in region.CepRanges)
                 {
@@ -26,19 +36,31 @@ namespace memoriza_backend.Services.Profile.ShippingService
 
                     if (numericCep >= from && numericCep <= to)
                     {
-                        return new ShippingOptionDto
-                        {
-                            Code = region.Code,
-                            Name = region.Name,
-                            Description = null,
-                            Price = region.Price,
-                            EstimatedDays = region.EstimatedDays
-                        };
+                        regionCode = region.Code;
+                        break;
                     }
                 }
+
+                if (regionCode != null)
+                    break;
             }
 
-            return null;
+            if (regionCode == null)
+                return null;
+
+            var regionEntity = await _shippingRepository.GetRegionByCodeAsync(regionCode);
+
+            if (regionEntity == null || !regionEntity.IsActive)
+                return null;
+
+            return new ShippingOptionDto
+            {
+                Code = regionEntity.Code,
+                Name = regionEntity.Name,
+                Description = regionEntity.IsPickupOption ? "Retirada na loja" : null,
+                Price = regionEntity.Price,
+                EstimatedDays = regionEntity.EstimatedDays
+            };
         }
 
         private int NormalizeCep(string cep)

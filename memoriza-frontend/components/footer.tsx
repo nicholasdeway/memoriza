@@ -78,11 +78,11 @@ export function Footer() {
               </li>
               <li className="flex items-start space-x-2">
                 <Phone size={16} className="mt-0.5 flex-shrink-0" />
-                <span>+55 (11) 3000-0000</span>
+                <span>+55 (34) 3000-0000</span>
               </li>
               <li className="flex items-start space-x-2">
                 <MapPin size={16} className="mt-0.5 flex-shrink-0" />
-                <span>São Paulo, SP</span>
+                <span>Uberlândia - MG</span>
               </li>
             </ul>
           </div>

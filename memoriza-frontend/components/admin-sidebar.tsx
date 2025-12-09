@@ -19,9 +19,10 @@ import {
   Shield,
   FileText,
   Image,
+  Truck,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 type MenuItem = {
   href: string;
@@ -72,6 +73,12 @@ const menuSections: {
         label: "Pedidos",
         icon: ShoppingCart,
         module: "orders",
+      },
+      {
+        href: "/admin/frete",
+        label: "Frete",
+        icon: Truck,
+        module: "shipping",
       },
       {
         href: "/admin/carrossel",
@@ -170,6 +177,61 @@ export function AdminSidebar() {
     }, ANIMATION_DURATION);
   };
 
+  // ✨ Swipe Gesture Support
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      touchEndX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchEnd = () => {
+      if (isAnimating) return;
+
+      const swipeDistance = touchEndX.current - touchStartX.current;
+      const threshold = 50; // mínimo de 50px para considerar swipe
+
+      // Swipe da esquerda para direita (abrir sidebar)
+      if (!expanded && swipeDistance > threshold && touchStartX.current < 50) {
+        setExpanded(true);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(SIDEBAR_EXPANDED_KEY, "true");
+        }
+      }
+
+      // Swipe da direita para esquerda (fechar sidebar)
+      if (expanded && swipeDistance < -threshold) {
+        setExpanded(false);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(SIDEBAR_EXPANDED_KEY, "false");
+        }
+      }
+
+      // Reset
+      touchStartX.current = 0;
+      touchEndX.current = 0;
+    };
+
+    // Adiciona listeners apenas no mobile
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      document.addEventListener("touchstart", handleTouchStart);
+      document.addEventListener("touchmove", handleTouchMove);
+      document.addEventListener("touchend", handleTouchEnd);
+    }
+
+    return () => {
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [expanded, isAnimating]);
+
   return (
     <>
       {/* Overlay para mobile */}
@@ -182,6 +244,7 @@ export function AdminSidebar() {
 
       {/* Sidebar Principal */}
       <div
+        ref={sidebarRef}
         className={`
           fixed lg:relative z-50
           bg-primary text-primary-foreground min-h-screen flex flex-col

@@ -35,6 +35,12 @@ namespace memoriza_backend.Models.Entities
         /// </summary>
         public bool IsPickupOption { get; set; }
 
+        /// <summary>
+        /// Valor mínimo do carrinho para frete grátis nesta região.
+        /// Se 0, não há frete grátis configurado para esta região.
+        /// </summary>
+        public decimal FreeShippingThreshold { get; set; }
+
         public bool IsActive { get; set; } = true;
     }
 }

@@ -6,6 +6,16 @@ import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useEffect, useMemo, useState } from "react";
 import { Filter, ShoppingCart } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105";
@@ -112,7 +122,19 @@ const formatCurrency = (value: number) =>
     currency: "BRL",
   });
 
+// Helper para gerar slug (mesmo usado no header)
+const generateSlug = (nome: string) => {
+  return nome
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+};
+
 export default function ProductsPage() {
+  const searchParams = useSearchParams();
+  const categorySlugFromUrl = searchParams.get("category");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("Todos");
   const [selectedPrice, setSelectedPrice] = useState<string>("Todas");
   const [sortBy, setSortBy] = useState<SortOption>("popular");
@@ -129,6 +151,10 @@ export default function ProductsPage() {
   const [selectedColorIds, setSelectedColorIds] = useState<number[]>([]);
   const [showAllSizes, setShowAllSizes] = useState(false);
   const [showAllColors, setShowAllColors] = useState(false);
+
+  // Paginação - 24 produtos por página na tela de produtos
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 24;
 
   // ===== Fetch filtros + produtos =====
   useEffect(() => {
@@ -217,6 +243,20 @@ export default function ProductsPage() {
 
     void fetchData();
   }, []);
+
+  // Aplicar filtro de categoria da URL quando categorias carregarem
+  useEffect(() => {
+    if (!categorySlugFromUrl || categories.length === 0) return;
+
+    // Encontrar categoria pelo slug
+    const matchedCategory = categories.find(
+      (cat) => generateSlug(cat.name) === categorySlugFromUrl
+    );
+
+    if (matchedCategory) {
+      setSelectedCategoryId(matchedCategory.id);
+    }
+  }, [categorySlugFromUrl, categories]);
 
   // Contagens por tamanho/cor (com base nos produtos reais)
   const sizeCounts = useMemo(() => {
@@ -374,6 +414,46 @@ export default function ProductsPage() {
     sortBy,
   ]);
 
+  // Resetar para página 1 quando os filtros mudarem
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategoryId, selectedSizeIds, selectedColorIds, selectedPrice, sortBy]);
+
+  // Calcular produtos paginados
+  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+
+  // Gerar números de página para exibir
+  const getPageNumbers = () => {
+    const pages: number[] = [];
+    const maxPagesToShow = 5;
+    
+    if (totalPages <= maxPagesToShow) {
+      // Mostrar todas as páginas se forem poucas
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Lógica para mostrar páginas com reticências
+      if (currentPage <= 3) {
+        pages.push(1, 2, 3, 4, -1, totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1, -1, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, -1, currentPage - 1, currentPage, currentPage + 1, -1, totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-muted/10">
       <Header />
@@ -387,8 +467,8 @@ export default function ProductsPage() {
       <div className="flex-1 py-8 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-            {/* Filtros da Barra Lateral */}
-            <div className="lg:col-span-1">
+            {/* Filtros da Barra Lateral - Desktop */}
+            <div className="hidden lg:block lg:col-span-1">
               <div className="sticky top-24 space-y-6">
                 <div className="flex items-center space-x-2">
                   <Filter size={20} className="text-foreground" />
@@ -588,7 +668,217 @@ export default function ProductsPage() {
 
             {/* Grade de Produtos */}
             <div className="lg:col-span-4">
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                {/* Mobile Filter Trigger */}
+                <div className="lg:hidden w-full md:w-auto">
+                  <Sheet>
+                    <SheetTrigger asChild>
+                      <Button variant="outline" className="w-full gap-2">
+                        <Filter size={16} />
+                        Filtros
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent side="left">
+                      <SheetHeader>
+                        <SheetTitle>Filtros</SheetTitle>
+                        <SheetDescription>
+                          Refine sua busca por produtos.
+                        </SheetDescription>
+                      </SheetHeader>
+                      <div className="mt-4 overflow-y-auto max-h-[calc(100vh-120px)] pb-8 space-y-6">
+                        {/* Categoria (API) */}
+                        <div className="bg-white p-4 rounded-lg shadow-sm">
+                          <h4 className="font-medium text-foreground mb-3 text-sm">
+                            Categoria
+                          </h4>
+
+                          {loadingFilters && categories.length === 0 ? (
+                            <p className="text-xs text-foreground/60">
+                              Carregando categorias...
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              {categoryOptions.map((cat) => (
+                                <label
+                                  key={cat.id}
+                                  className="flex items-center space-x-2 cursor-pointer"
+                                >
+                                  <input
+                                    type="radio"
+                                    name="category-mobile"
+                                    value={cat.id}
+                                    checked={selectedCategoryId === cat.id}
+                                    onChange={(e) =>
+                                      setSelectedCategoryId(e.target.value)
+                                    }
+                                    className="rounded-sm"
+                                  />
+                                  <span className="text-sm text-foreground/70">
+                                    {cat.label}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Preço */}
+                        <div className="bg-white p-4 rounded-lg shadow-sm">
+                          <h4 className="font-medium text-foreground mb-3 text-sm">
+                            Preço
+                          </h4>
+                          <div className="space-y-2">
+                            {PRICE_RANGES.map((range) => (
+                              <label
+                                key={range}
+                                className="flex items-center space-x-2 cursor-pointer"
+                              >
+                                <input
+                                  type="radio"
+                                  name="price-mobile"
+                                  value={range}
+                                  checked={selectedPrice === range}
+                                  onChange={(e) => setSelectedPrice(e.target.value)}
+                                  className="rounded-sm"
+                                />
+                                <span className="text-sm text-foreground/70">
+                                  {range}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Tamanho */}
+                        <div className="bg-white p-4 rounded-lg shadow-sm">
+                          <h4 className="font-medium text-foreground mb-3 text-sm">
+                            Tamanho
+                          </h4>
+
+                          {loadingFilters && sizes.length === 0 ? (
+                            <p className="text-xs text-foreground/60">
+                              Carregando tamanhos...
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              {visibleSizes.map((size) => (
+                                <label
+                                  key={size.id}
+                                  className="flex items-center space-x-2 cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="rounded-sm"
+                                    checked={selectedSizeIds.includes(size.id)}
+                                    onChange={() => toggleSize(size.id)}
+                                  />
+                                  <span className="text-sm text-foreground/70">
+                                    {size.name}{" "}
+                                    <span className="text-xs text-foreground/60">
+                                      ({sizeCounts[size.id] ?? 0})
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+
+                          {sizes.length > visibleSizes.length && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllSizes(true)}
+                              className="mt-3 inline-flex items-center px-3 py-1.5 text-xs rounded-full border border-primary/30 text-primary bg-background hover:bg-primary/5 transition-colors"
+                            >
+                              Ver todos
+                            </button>
+                          )}
+
+                          {showAllSizes && sizes.length > 7 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllSizes(false)}
+                              className="mt-2 ml-1 inline-flex items-center px-3 py-1.5 text-xs rounded-full border border-border text-foreground/70 bg-background hover:bg-muted transition-colors"
+                            >
+                              Ver menos
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Cor */}
+                        <div className="bg-white p-4 rounded-lg shadow-sm">
+                          <h4 className="font-medium text-foreground mb-3 text-sm">
+                            Cor
+                          </h4>
+
+                          {loadingFilters && colors.length === 0 ? (
+                            <p className="text-xs text-foreground/60">
+                              Carregando cores...
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              {visibleColors.map((color) => (
+                                <label
+                                  key={color.id}
+                                  className="flex items-center space-x-2 cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="rounded-sm"
+                                    checked={selectedColorIds.includes(color.id)}
+                                    onChange={() => toggleColor(color.id)}
+                                  />
+                                  <span className="flex items-center space-x-2 text-sm text-foreground/70">
+                                    <span
+                                      className="w-4 h-4 rounded-full border border-border"
+                                      style={{
+                                        backgroundColor: color.hex || "#ffffff",
+                                      }}
+                                    />
+                                    <span>
+                                      {color.name}{" "}
+                                      <span className="text-xs text-foreground/60">
+                                        ({colorCounts[color.id] ?? 0})
+                                      </span>
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+
+                          {colors.length > visibleColors.length && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllColors(true)}
+                              className="mt-3 inline-flex items-center px-3 py-1.5 text-xs rounded-full border border-primary/30 text-primary bg-background hover:bg-primary/5 transition-colors"
+                            >
+                              Ver todos
+                            </button>
+                          )}
+
+                          {showAllColors && colors.length > 7 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllColors(false)}
+                              className="mt-2 ml-1 inline-flex items-center px-3 py-1.5 text-xs rounded-full border border-border text-foreground/70 bg-background hover:bg-muted transition-colors"
+                            >
+                              Ver menos
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Resetar */}
+                        <button
+                          onClick={handleResetFilters}
+                          className="w-full py-2 bg-white rounded-lg shadow-sm text-sm font-medium text-foreground hover:bg-gray-50 transition-colors"
+                        >
+                          Limpar Filtros
+                        </button>
+                      </div>
+                    </SheetContent>
+                  </Sheet>
+                </div>
+
                 <p className="text-sm text-foreground/70">
                   {loadingProducts
                     ? "Carregando produtos..."
@@ -596,8 +886,8 @@ export default function ProductsPage() {
                         filteredProducts.length === 1 ? "" : "s"
                       }`}
                 </p>
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm text-foreground/70">
+                <div className="flex items-center space-x-2 w-full md:w-auto">
+                  <label className="text-sm text-foreground/70 whitespace-nowrap">
                     Ordenar:
                   </label>
                   <select
@@ -605,7 +895,7 @@ export default function ProductsPage() {
                     onChange={(e) =>
                       setSortBy(e.target.value as SortOption)
                     }
-                    className="px-3 py-1 border border-border rounded-lg text-sm bg-background text-foreground"
+                    className="px-3 py-1 border border-border rounded-lg text-sm bg-background text-foreground flex-1 md:flex-none"
                   >
                     <option value="popular">Mais Popular</option>
                     <option value="newest">Mais Novo</option>
@@ -738,24 +1028,50 @@ export default function ProductsPage() {
                     })}
                   </div>
 
-                  {/* Paginação fake por enquanto */}
-                  <div className="flex justify-center items-center space-x-2 mt-12">
-                    <button className="px-3 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors">
-                      Anterior
-                    </button>
-                    <button className="px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium">
-                      1
-                    </button>
-                    <button className="px-3 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors">
-                      2
-                    </button>
-                    <button className="px-3 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors">
-                      3
-                    </button>
-                    <button className="px-3 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors">
-                      Próximo
-                    </button>
-                  </div>
+                  {/* Paginação funcional */}
+                  {totalPages > 1 && (
+                    <div className="flex justify-center items-center space-x-2 mt-12">
+                      <button
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="px-3 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Anterior
+                      </button>
+                      
+                      {getPageNumbers().map((page, index) => {
+                        if (page === -1) {
+                          return (
+                            <span key={`ellipsis-${index}`} className="px-2 text-foreground/60">
+                              ...
+                            </span>
+                          );
+                        }
+                        
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => handlePageChange(page)}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              currentPage === page
+                                ? "bg-primary text-primary-foreground"
+                                : "border border-border hover:bg-muted"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      })}
+                      
+                      <button
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Próximo
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>

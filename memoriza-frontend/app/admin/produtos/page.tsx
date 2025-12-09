@@ -116,6 +116,36 @@ interface ModalImage {
   isNew: boolean
 }
 
+// ===== Helpers de formatação de moeda BRL =====
+const formatCurrencyBRL = (value: string): string => {
+  // Remove tudo que não é número
+  const numbers = value.replace(/\D/g, "")
+  
+  if (!numbers) return ""
+  
+  // Converte para número e divide por 100 para ter os centavos
+  const amount = parseFloat(numbers) / 100
+  
+  // Formata no padrão brasileiro
+  return amount.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+const parseCurrencyBRL = (formatted: string): string => {
+  // Remove tudo que não é número
+  const numbers = formatted.replace(/\D/g, "")
+  
+  if (!numbers) return ""
+  
+  // Converte para número e divide por 100
+  const amount = parseFloat(numbers) / 100
+  
+  // Retorna como string com ponto decimal para o backend
+  return amount.toFixed(2)
+}
+
 export default function AdminProdutos() {
   const { token, isLoading: authLoading } = useAuth()
   const { canCreate, canEdit, canDelete } = usePermissions('products')
@@ -364,8 +394,10 @@ export default function AdminProdutos() {
     setEditingProduct(product)
     setFormData({
       nome: product.nome,
-      preco: product.preco.toString(),
-      precoPromocional: product.precoPromocional?.toString() ?? "",
+      preco: formatCurrencyBRL((product.preco * 100).toString()),
+      precoPromocional: product.precoPromocional
+        ? formatCurrencyBRL((product.precoPromocional * 100).toString())
+        : "",
       categoriaId: product.categoriaId,
       tamanhos: product.tamanhos ?? [],
       cores: product.cores ?? [],
@@ -473,13 +505,20 @@ export default function AdminProdutos() {
     }
     
     try {
+      // Helper para converter e arredondar corretamente
+      const parsePrice = (value: string): number => {
+        const parsed = Number.parseFloat(value || "0")
+        // Arredondar para 2 casas decimais para evitar problemas de precisão
+        return Math.round(parsed * 100) / 100
+      }
+
       const payload = {
         categoryId: formData.categoriaId,
         name: formData.nome,
         description: formData.descricao || null,
-        price: Number.parseFloat(formData.preco || "0"),
+        price: parsePrice(parseCurrencyBRL(formData.preco)),
         promotionalPrice: formData.precoPromocional
-          ? Number.parseFloat(formData.precoPromocional)
+          ? parsePrice(parseCurrencyBRL(formData.precoPromocional))
           : null,
         sizeIds: formData.tamanhos,
         colorIds: formData.cores,
@@ -1118,15 +1157,24 @@ export default function AdminProdutos() {
                           {product.precoPromocional ? (
                             <>
                               <span className="text-sm text-foreground/50 line-through">
-                                R$ {product.preco.toFixed(2)}
+                                R$ {product.preco.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                               </span>
                               <span className="ml-2 font-medium text-accent">
-                                R$ {product.precoPromocional.toFixed(2)}
+                                R$ {product.precoPromocional.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                               </span>
                             </>
                           ) : (
                             <span className="font-medium text-foreground">
-                              R$ {product.preco.toFixed(2)}
+                              R$ {product.preco.toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </span>
                           )}
                         </div>
@@ -1324,13 +1372,14 @@ export default function AdminProdutos() {
                     Preço (R$)
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     value={formData.preco}
-                    onChange={(e) =>
-                      setFormData({ ...formData, preco: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const formatted = formatCurrencyBRL(e.target.value)
+                      setFormData({ ...formData, preco: formatted })
+                    }}
                     className="w-full px-4 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-accent"
+                    placeholder="0,00"
                   />
                 </div>
                 <div>
@@ -1338,17 +1387,17 @@ export default function AdminProdutos() {
                     Preço Promocional
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     value={formData.precoPromocional}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const formatted = formatCurrencyBRL(e.target.value)
                       setFormData({
                         ...formData,
-                        precoPromocional: e.target.value,
+                        precoPromocional: formatted,
                       })
-                    }
+                    }}
                     className="w-full px-4 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-accent"
-                    placeholder="Opcional"
+                    placeholder="0,00 (Opcional)"
                   />
                 </div>
               </div>

@@ -61,6 +61,32 @@ namespace memoriza_backend.Models.DTO.User.Orders
         public string? TrackingCode { get; set; }
         public string? TrackingCompany { get; set; }
         public string? TrackingUrl { get; set; }
+
+        // ---- Payment Recovery ----
+        /// <summary>
+        /// ID da preferência do Mercado Pago (para retomar pagamento)
+        /// </summary>
+        public string? PreferenceId { get; set; }
+
+        /// <summary>
+        /// URL de pagamento (produção)
+        /// </summary>
+        public string? InitPoint { get; set; }
+
+        /// <summary>
+        /// URL de pagamento (sandbox)
+        /// </summary>
+        public string? SandboxInitPoint { get; set; }
+
+        /// <summary>
+        /// Indica se o pedido pode ser retomado (botão "Concluir Compra")
+        /// </summary>
+        public bool CanResume { get; set; }
+
+        /// <summary>
+        /// Indica se o QR Code PIX pode ser reaberto (dentro de 30 minutos)
+        /// </summary>
+        public bool CanReopenQrCode { get; set; }
     }
 
     /// <summary>

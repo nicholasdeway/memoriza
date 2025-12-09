@@ -29,8 +29,19 @@ namespace memoriza_backend.Services.Payments
             _settings = options.Value;
             _orderRepository = orderRepository;
 
-            // Configura o SDK do Mercado Pago
+            // Configura o SDK do Mercado Pago para PRODUÇÃO
             MercadoPagoConfig.AccessToken = _settings.AccessToken;
+            
+            // FORÇA o ambiente de PRODUÇÃO (não sandbox)
+            // Isso garante que mesmo com credenciais de produção, não use sandbox
+            Environment.SetEnvironmentVariable("MP_ENV", "production");
+            
+            // 🔍 Log de configuração
+            Console.WriteLine("🚀 MercadoPagoService inicializado:");
+            Console.WriteLine($"  AccessToken: {(_settings.AccessToken?.Length > 0 ? "✅ Configurado" : "❌ VAZIO")}");
+            Console.WriteLine($"  SuccessUrl: {_settings.SuccessUrl ?? "❌ NULL"}");
+            Console.WriteLine($"  FailureUrl: {_settings.FailureUrl ?? "❌ NULL"}");
+            Console.WriteLine($"  PendingUrl: {_settings.PendingUrl ?? "❌ NULL"}");
         }
 
         // ==========================================================
@@ -51,17 +62,69 @@ namespace memoriza_backend.Services.Payments
                 UnitPrice = i.UnitPrice
             }).ToList();
 
+            // 🚚 Adiciona o frete como um item separado (se houver)
+            if (order.ShippingAmount > 0)
+            {
+                mpItems.Add(new PreferenceItemRequest
+                {
+                    Id = "shipping",
+                    Title = $"Frete - {order.ShippingName}",
+                    Quantity = 1,
+                    CurrencyId = "BRL",
+                    UnitPrice = order.ShippingAmount
+                });
+            }
+
+            // Validar URLs antes de criar preferência
+            if (string.IsNullOrWhiteSpace(_settings.SuccessUrl))
+                throw new InvalidOperationException("MercadoPago:SuccessUrl não configurado");
+            if (string.IsNullOrWhiteSpace(_settings.FailureUrl))
+                throw new InvalidOperationException("MercadoPago:FailureUrl não configurado");
+            if (string.IsNullOrWhiteSpace(_settings.PendingUrl))
+                throw new InvalidOperationException("MercadoPago:PendingUrl não configurado");
+
+            Console.WriteLine($"🔍 URLs Mercado Pago:");
+            Console.WriteLine($"  Success: {_settings.SuccessUrl}");
+            Console.WriteLine($"  Failure: {_settings.FailureUrl}");
+            Console.WriteLine($"  Pending: {_settings.PendingUrl}");
+
             var request = new PreferenceRequest
             {
                 Items = mpItems,
                 ExternalReference = order.Id.ToString(),
-                BackUrls = new PreferenceBackUrlsRequest
+                
+                // 🏪 Nome que aparece no checkout
+                StatementDescriptor = "Memoriza",
+                
+                // 💳 Configuração de Métodos de Pagamento
+                PaymentMethods = new PreferencePaymentMethodsRequest
                 {
-                    Success = _settings.SuccessUrl,
-                    Failure = _settings.FailureUrl,
-                    Pending = _settings.PendingUrl
+                    // Métodos EXCLUÍDOS (desabilitados)
+                    ExcludedPaymentTypes = new List<PreferencePaymentTypeRequest>
+                    {
+                        // Desabilitar boleto (demora 1-3 dias + taxa)
+                        new PreferencePaymentTypeRequest { Id = "ticket" },
+                        
+                        // Desabilitar débito (opcional - descomente se quiser desabilitar)
+                        // new PreferencePaymentTypeRequest { Id = "debit_card" },
+                    },
+                    
+                    // Parcelamento máximo (12x)
+                    Installments = 12,
+                    
+                    // Parcelas sem juros (opcional - configure no painel do Mercado Pago)
+                    // DefaultInstallments = 1,
                 },
-                AutoReturn = "approved",
+                
+                // ❌ TEMPORARIAMENTE REMOVIDO - Testando se BackUrls está causando erro
+                // BackUrls = new PreferenceBackUrlsRequest
+                // {
+                //     Success = _settings.SuccessUrl,
+                //     Failure = _settings.FailureUrl,
+                //     Pending = _settings.PendingUrl
+                // },
+                // AutoReturn = "approved",
+                
                 NotificationUrl = _settings.NotificationUrl
             };
 
