@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Filter, Star, ShoppingCart } from "lucide-react";
-import { useSearchParams } from "next/navigation";
 
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -136,8 +135,11 @@ const generateSlug = (nome: string) => {
 };
 
 export default function Home() {
-  const searchParams = useSearchParams();
-  const categorySlugFromUrl = searchParams.get("category");
+  // slug vindo da URL (?category=...)
+  const [categorySlugFromUrl, setCategorySlugFromUrl] = useState<string | null>(
+    null,
+  );
+
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("Todos");
   const [selectedPrice, setSelectedPrice] = useState<string>("Todas");
   const [sortBy, setSortBy] = useState<SortOption>("popular");
@@ -158,6 +160,18 @@ export default function Home() {
   // Paginação - 12 produtos por página na homepage
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 12;
+
+  // ===== Ler category da URL no client (sem useSearchParams) =====
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const categoryFromQuery = params.get("category");
+
+    if (categoryFromQuery) {
+      setCategorySlugFromUrl(categoryFromQuery);
+    }
+  }, []);
 
   // ===== Fetch filtros + produtos =====
   useEffect(() => {
@@ -251,9 +265,8 @@ export default function Home() {
   useEffect(() => {
     if (!categorySlugFromUrl || categories.length === 0) return;
 
-    // Encontrar categoria pelo slug
     const matchedCategory = categories.find(
-      (cat) => generateSlug(cat.name) === categorySlugFromUrl
+      (cat) => generateSlug(cat.name) === categorySlugFromUrl,
     );
 
     if (matchedCategory) {
@@ -312,7 +325,6 @@ export default function Home() {
     ...categories.map((c) => ({ id: c.id, label: c.name })),
   ];
 
-  // Helpers para exibir labels de tamanho/cor
   const getSizeLabel = (product: Product) => {
     const names = product.sizeIds
       .map((id) => sizes.find((s) => s.id === id)?.name)
@@ -327,7 +339,6 @@ export default function Home() {
     return names.join(", ");
   };
 
-  // Função para filtrar por faixa de preço
   const matchPriceRange = (product: Product, range: string) => {
     if (range === "Todas") return true;
 
@@ -351,31 +362,25 @@ export default function Home() {
     }
   };
 
-  // Produtos filtrados
   const filteredProducts = useMemo(() => {
     let list = products.filter((p) => {
-      // Categoria
       const matchCategory =
         selectedCategoryId === "Todos" || p.categoryId === selectedCategoryId;
 
-      // Tamanho
       const matchSize =
         selectedSizeIds.length === 0 ||
         p.sizeIds.some((id) => selectedSizeIds.includes(id));
 
-      // Cor
       const matchColor =
         selectedColorIds.length === 0 ||
         p.colorIds.some((id) => selectedColorIds.includes(id));
 
-      // Preço
       const matchPrice = matchPriceRange(p, selectedPrice);
 
       return matchCategory && matchSize && matchColor && matchPrice;
     });
 
-    // Ordenação
-    list = [...list]; // cópia para não mutar state
+    list = [...list];
 
     list.sort((a, b) => {
       const aBase = a.price;
@@ -406,7 +411,6 @@ export default function Home() {
           return b.name.localeCompare(a.name, "pt-BR");
         case "popular":
         default:
-          // Por enquanto, tratamos "popular" como mais recentes
           return (
             new Date(b.createdAt).getTime() -
             new Date(a.createdAt).getTime()
@@ -424,44 +428,56 @@ export default function Home() {
     sortBy,
   ]);
 
-  // Resetar para página 1 quando os filtros mudarem
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedCategoryId, selectedSizeIds, selectedColorIds, selectedPrice, sortBy]);
 
-  // Calcular produtos paginados
   const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
 
-  // Gerar números de página para exibir
   const getPageNumbers = () => {
     const pages: number[] = [];
     const maxPagesToShow = 5;
-    
+
     if (totalPages <= maxPagesToShow) {
-      // Mostrar todas as páginas se forem poucas
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
     } else {
-      // Lógica para mostrar páginas com reticências
       if (currentPage <= 3) {
         pages.push(1, 2, 3, 4, -1, totalPages);
       } else if (currentPage >= totalPages - 2) {
-        pages.push(1, -1, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+        pages.push(
+          1,
+          -1,
+          totalPages - 3,
+          totalPages - 2,
+          totalPages - 1,
+          totalPages,
+        );
       } else {
-        pages.push(1, -1, currentPage - 1, currentPage, currentPage + 1, -1, totalPages);
+        pages.push(
+          1,
+          -1,
+          currentPage - 1,
+          currentPage,
+          currentPage + 1,
+          -1,
+          totalPages,
+        );
       }
     }
-    
+
     return pages;
   };
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const Filters = (
@@ -518,7 +534,7 @@ export default function Home() {
               <div className="sticky top-24 space-y-6">{Filters}</div>
             </div>
 
-            {/* Grade de Produtos com CARD PADRONIZADO */}
+            {/* Grade de Produtos */}
             <div className="lg:col-span-4">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 {/* Mobile Filter Trigger */}
@@ -580,7 +596,7 @@ export default function Home() {
                 </div>
               ) : (
                 <>
-                  {/* 🔹 GRID COM 3 COLUNAS EM TELAS GRANDES - HOMEPAGE */}
+                  {/* GRID de produtos */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-2">
                     {paginatedProducts.map((product) => {
                       const sizeLabel = getSizeLabel(product);
@@ -618,7 +634,6 @@ export default function Home() {
                             href={`/products/${product.id}`}
                             className="flex-1 flex flex-col"
                           >
-                            {/* Imagem com aspect-square para manter altura original */}
                             <div className="relative bg-muted rounded-lg overflow-hidden mb-4 aspect-square">
                               <img
                                 src={product.imageUrl || "/placeholder.svg"}
@@ -632,34 +647,32 @@ export default function Home() {
                               )}
                             </div>
 
-                            {/* Conteúdo do card */}
                             <div className="flex-1 flex flex-col">
-                              {/* Título */}
                               <h3 className="font-medium text-foreground group-hover:text-accent transition-colors line-clamp-2 min-h-[2.75rem]">
                                 {product.name}
                               </h3>
 
-                              {/* Cores (bolinhas) */}
                               {productColors.length > 0 && (
                                 <div className="mt-2 flex items-center gap-1">
                                   {productColors.map((color) => (
                                     <span
                                       key={color.id}
                                       className="w-4 h-4 rounded-full border border-border"
-                                      style={{ backgroundColor: color.hex || "#ffffff" }}
+                                      style={{
+                                        backgroundColor:
+                                          color.hex || "#ffffff",
+                                      }}
                                     />
                                   ))}
                                 </div>
                               )}
 
-                              {/* Tamanhos */}
                               {sizeLabel && (
                                 <p className="mt-1 text-xs text-foreground/60 line-clamp-1">
                                   {sizeLabel}
                                 </p>
                               )}
 
-                              {/* Preços */}
                               <div className="mt-3 space-y-1">
                                 {hasDiscount ? (
                                   <>
@@ -679,7 +692,6 @@ export default function Home() {
                             </div>
                           </Link>
 
-                          {/* Botão de comprar */}
                           <Link
                             href={`/products/${product.id}`}
                             className="mt-3 w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium hover:bg-primary/90 transition-colors"
@@ -692,7 +704,6 @@ export default function Home() {
                     })}
                   </div>
 
-                  {/* Paginação funcional */}
                   {totalPages > 1 && (
                     <div className="flex justify-center items-center space-x-2 mt-12">
                       <button
@@ -702,16 +713,19 @@ export default function Home() {
                       >
                         Anterior
                       </button>
-                      
+
                       {getPageNumbers().map((page, index) => {
                         if (page === -1) {
                           return (
-                            <span key={`ellipsis-${index}`} className="px-2 text-foreground/60">
+                            <span
+                              key={`ellipsis-${index}`}
+                              className="px-2 text-foreground/60"
+                            >
                               ...
                             </span>
                           );
                         }
-                        
+
                         return (
                           <button
                             key={page}
@@ -726,7 +740,7 @@ export default function Home() {
                           </button>
                         );
                       })}
-                      
+
                       <button
                         onClick={() => handlePageChange(currentPage + 1)}
                         disabled={currentPage === totalPages}
