@@ -1,7 +1,7 @@
 ﻿using memoriza_backend.Services.Admin.Dashboard;
 using Microsoft.AspNetCore.Mvc;
 
-// using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 
 namespace memoriza_backend.Controllers.Admin
 {
@@ -9,8 +9,7 @@ namespace memoriza_backend.Controllers.Admin
     [Route("api/admin/dashboard")]
 
     // ======================================================
-    // TODO: HABILITAR EM PRODUÇÃO!
-    // [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin")]
     // ======================================================
     public class AdminDashboardController : ControllerBase
     {

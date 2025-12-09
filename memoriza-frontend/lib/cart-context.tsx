@@ -7,6 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { toast } from "sonner"
+import { useAuth } from "@/lib/auth-context"
+import * as cartApi from "@/lib/api/cart"
+import type { CartItemDto } from "@/types/cart"
 
 const CART_STORAGE_KEY = "memoriza_cart_v1"
 
@@ -97,14 +101,50 @@ function loadInitialCart(): CartItem[] {
 // ==== Provider ====
 
 export function CartProvider({ children }: { children: ReactNode }) {
+  const { token } = useAuth()
+  
   // começa sempre vazio no SSR e no cliente
   const [items, setItems] = useState<CartItem[]>([])
+  const [syncing, setSyncing] = useState(false)
 
   // carrega do localStorage só depois que o componente está montado (cliente)
   useEffect(() => {
     const initial = loadInitialCart()
     setItems(initial)
   }, [])
+
+  // 🔄 Sincroniza com backend quando usuário loga
+  useEffect(() => {
+    if (!token || syncing) return
+
+    const syncWithBackend = async () => {
+      setSyncing(true)
+      try {
+        const backendCart = await cartApi.getCart(token)
+        
+        // Converte items do backend para formato do frontend
+        const backendItems: CartItem[] = backendCart.items.map((item: CartItemDto) => ({
+          id: item.cartItemId,
+          productId: item.productId,
+          name: item.productName,
+          imageUrl: item.thumbnailUrl,
+          price: item.unitPrice,
+          quantity: item.quantity,
+          // Backend não tem size/color/personalization, então deixa undefined
+        }))
+
+        // Backend é a fonte da verdade quando logado
+        setItems(backendItems)
+      } catch (error) {
+        console.error("Erro ao sincronizar carrinho:", error)
+        // Mantém localStorage em caso de erro
+      } finally {
+        setSyncing(false)
+      }
+    }
+
+    void syncWithBackend()
+  }, [token])
 
   // salva no localStorage sempre que mudar
   useEffect(() => {
@@ -129,6 +169,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       (item.personalizationText ?? "") ===
         (incoming.personalizationText ?? "")
 
+    // 🔄 Atualiza UI imediatamente (optimistic update)
     setItems((prev) => {
       const existingIndex = prev.findIndex(matchKey)
 
@@ -160,10 +201,33 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       return [...prev, newItem]
     })
+
+    // 🔄 Sincroniza com backend se autenticado
+    if (token) {
+      cartApi.addCartItem(
+        {
+          productId: incoming.productId,
+          quantity: incoming.quantity > 0 ? incoming.quantity : 1,
+        },
+        token
+      ).catch((error) => {
+        console.error("Erro ao sincronizar item com backend:", error)
+        toast.error("Item adicionado localmente, mas não foi sincronizado")
+      })
+    }
   }
 
   const removeItem: CartContextValue["removeItem"] = (lineId) => {
+    // Atualiza UI imediatamente
     setItems((prev) => prev.filter((item) => item.id !== lineId))
+
+    // Sincroniza com backend se autenticado
+    if (token) {
+      cartApi.removeCartItem({ cartItemId: lineId }, token).catch((error) => {
+        console.error("Erro ao remover item do backend:", error)
+        toast.error("Item removido localmente, mas não foi sincronizado")
+      })
+    }
   }
 
   const updateQuantity: CartContextValue["updateQuantity"] = (
@@ -189,6 +253,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
           return item
         }
 
+        // Sincroniza com backend se autenticado
+        if (token) {
+          cartApi.updateCartItemQuantity(
+            { cartItemId: item.id, quantity: safeQuantity },
+            token
+          ).catch((error) => {
+            console.error("Erro ao atualizar quantidade no backend:", error)
+          })
+        }
+
         return {
           ...item,
           quantity: safeQuantity,
@@ -199,6 +273,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart: CartContextValue["clearCart"] = () => {
     setItems([])
+
+    // Sincroniza com backend se autenticado
+    if (token) {
+      cartApi.clearCart(token).catch((error) => {
+        console.error("Erro ao limpar carrinho no backend:", error)
+      })
+    }
   }
 
   return (

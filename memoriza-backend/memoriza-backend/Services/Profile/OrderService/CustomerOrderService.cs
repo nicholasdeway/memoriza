@@ -11,6 +11,7 @@ using memoriza_backend.Models.Entities;
 using memoriza_backend.Repositories.Interfaces;
 using memoriza_backend.Repositories.Profile.AddressRepository;
 using memoriza_backend.Services.Payments;
+using Microsoft.Extensions.Configuration;
 
 namespace memoriza_backend.Services.Profile.OrderService
 {
@@ -20,18 +21,20 @@ namespace memoriza_backend.Services.Profile.OrderService
         private readonly ICartRepository _cartRepository;
         private readonly IMercadoPagoService _mercadoPagoService;
         private readonly IAddressRepository _addressRepository;
+        private readonly IConfiguration _configuration;
 
         public CustomerOrderService(
             ICustomerOrderRepository orderRepository,
             ICartRepository cartRepository,
             IMercadoPagoService mercadoPagoService,
-            IAddressRepository addressRepository
-        )
+            IAddressRepository addressRepository,
+            IConfiguration configuration)
         {
             _orderRepository = orderRepository;
             _cartRepository = cartRepository;
             _mercadoPagoService = mercadoPagoService;
             _addressRepository = addressRepository;
+            _configuration = configuration;
         }
 
         // ===========================================================
@@ -129,6 +132,30 @@ namespace memoriza_backend.Services.Profile.OrderService
                 };
             }
 
+            // ✅ PAYMENT RECOVERY LOGIC
+            bool canResume = false;
+            bool canReopenQrCode = false;
+            string? preferenceId = null;
+            string? initPoint = null;
+            string? sandboxInitPoint = null;
+
+            // Só permite recuperação se o pedido estiver PENDENTE e tiver PreferenceId
+            if (order.Status == OrderStatusCodes.Pending && !string.IsNullOrWhiteSpace(order.PreferenceId))
+            {
+                preferenceId = order.PreferenceId;
+                initPoint = order.InitPoint;
+                sandboxInitPoint = order.SandboxInitPoint;
+
+                // Verifica se ainda está dentro da janela de 30 minutos
+                var minutesSinceCreation = (now - order.CreatedAt).TotalMinutes;
+
+                if (minutesSinceCreation <= 30)
+                {
+                    canResume = true;
+                    canReopenQrCode = true; // QR Code PIX válido por 30 minutos
+                }
+            }
+
             return new OrderDetailForUserResponse
             {
                 OrderId = order.Id,
@@ -148,7 +175,14 @@ namespace memoriza_backend.Services.Profile.OrderService
                 TrackingCode = order.TrackingCode,
                 TrackingCompany = order.TrackingCompany,
                 TrackingUrl = order.TrackingUrl,
-                DeliveredAt = order.DeliveredAt
+                DeliveredAt = order.DeliveredAt,
+
+                // ✅ PAYMENT RECOVERY FIELDS
+                PreferenceId = preferenceId,
+                InitPoint = initPoint,
+                SandboxInitPoint = sandboxInitPoint,
+                CanResume = canResume,
+                CanReopenQrCode = canReopenQrCode
             };
         }
 
@@ -327,6 +361,12 @@ namespace memoriza_backend.Services.Profile.OrderService
                 return ServiceResult<CheckoutInitResponse>.Fail("Erro ao iniciar pagamento com Mercado Pago.");
             }
 
+            // ✅ Salvar dados de pagamento no pedido para permitir recuperação
+            order.PreferenceId = preference.PreferenceId;
+            order.InitPoint = preference.InitPoint;
+            order.SandboxInitPoint = preference.SandboxInitPoint;
+            await _orderRepository.UpdateAsync(order);
+
             var checkoutResponse = new CheckoutInitResponse
             {
                 OrderId = order.Id,
@@ -399,6 +439,34 @@ namespace memoriza_backend.Services.Profile.OrderService
                 Message = request.Reason,
                 RequestedAt = now
             });
+        }
+
+        public async Task<int> CancelExpiredOrdersAsync()
+        {
+            // Ler configuração do appsettings.json
+            double expirationHours = _configuration.GetValue<double>("OrderCancellation:ExpirationHours", 24);
+            
+            Console.WriteLine($"⏰ Buscando pedidos pendentes com mais de {expirationHours} horas ({expirationHours * 60} minutos)...");
+            
+            var expiredOrders = await _orderRepository.GetExpiredPendingOrdersAsync(expirationHours);
+            
+            if (expiredOrders == null || expiredOrders.Count == 0) return 0;
+            
+            int canceledCount = 0;
+            foreach (var order in expiredOrders)
+            {
+                try
+                {
+                    await _orderRepository.UpdateStatusAsync(order.Id, OrderStatusCodes.Cancelled);
+                    canceledCount++;
+                    Console.WriteLine($"✅ Pedido {order.OrderNumber} cancelado automaticamente (criado em {order.CreatedAt:dd/MM/yyyy HH:mm})");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ Erro ao cancelar pedido {order.OrderNumber}: {ex.Message}");
+                }
+            }
+            return canceledCount;
         }
     }
 }

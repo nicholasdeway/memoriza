@@ -6,11 +6,23 @@ namespace memoriza_backend.Repositories.Interfaces
     {
         Task<Order?> GetByIdAsync(Guid orderId, string userId);
         Task<List<Order>> GetUserOrdersAsync(string userId);
+
         Task CreateAsync(Order order);
         Task AddOrderItemsAsync(IEnumerable<OrderItem> items);
+
         Task UpdateRefundStatusAsync(Guid orderId, string refundStatus, string? reason = null);
         Task UpdateStatusAsync(Guid orderId, string newStatus);
 
-        Task UpdateTrackingInfoAsync(Guid orderId, string trackingCode, string trackingCompany, string trackingUrl);
+        Task UpdateTrackingInfoAsync(
+            Guid orderId,
+            string? trackingCode,
+            string? trackingCompany,
+            string? trackingUrl
+        );
+
+        Task UpdateAsync(Order order);
+        
+        // Cancelamento automático
+        Task<List<Order>> GetExpiredPendingOrdersAsync(double expirationHours);
     }
 }

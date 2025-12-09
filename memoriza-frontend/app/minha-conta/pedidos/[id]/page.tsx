@@ -17,58 +17,145 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import Link from "next/link"
-import { mockOrders, orderStatusLabels, orderStatusColors, type OrderStatus } from "@/lib/mock-data"
+import { useAuth } from "@/lib/auth-context"
+import { getOrderDetail, requestRefund } from "@/lib/api/orders"
+import type { OrderDetailResponse } from "@/types/orders"
+import { toast } from "sonner"
 
-const statusTimeline: { status: OrderStatus; icon: React.ElementType; label: string }[] = [
-  { status: "aprovado", icon: CheckCircle, label: "Aprovado" },
-  { status: "em_producao", icon: Clock, label: "Em Produção" },
-  { status: "a_caminho", icon: Truck, label: "À Caminho" },
-  { status: "entregue", icon: Package, label: "Entregue" },
+// Mapeamento de status para timeline
+const statusTimeline: { status: string; icon: React.ElementType; label: string }[] = [
+  { status: "Aprovado", icon: CheckCircle, label: "Aprovado" },
+  { status: "Em Produção", icon: Clock, label: "Em Produção" },
+  { status: "À Caminho", icon: Truck, label: "À Caminho" },
+  { status: "Entregue", icon: Package, label: "Entregue" },
 ]
 
-const statusOrder: OrderStatus[] = ["aprovado", "em_producao", "a_caminho", "entregue"]
+const statusOrder: string[] = ["Aprovado", "Em Produção", "À Caminho", "Entregue"]
+
+// Cores para cada status
+const orderStatusColors: Record<string, string> = {
+  "Pendente": "bg-yellow-100 text-yellow-700",
+  "Aprovado": "bg-green-100 text-green-700",
+  "Em Produção": "bg-blue-100 text-blue-700",
+  "À Caminho": "bg-purple-100 text-purple-700",
+  "Entregue": "bg-emerald-100 text-emerald-700",
+  "Cancelado": "bg-red-100 text-red-700",
+  "Reembolsado": "bg-orange-100 text-orange-700",
+}
 
 export default function PedidoDetalhesPage() {
   const params = useParams()
   const router = useRouter()
+  const { token } = useAuth()
+  
+  const [order, setOrder] = useState<OrderDetailResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [reembolsoModalOpen, setReembolsoModalOpen] = useState(false)
   const [motivo, setMotivo] = useState("")
+  const [submittingRefund, setSubmittingRefund] = useState(false)
+  const [activeStep, setActiveStep] = useState<string>("Aprovado")
 
-  const order = mockOrders.find((o) => o.id === params.id)
-
-  const [activeStep, setActiveStep] = useState<OrderStatus>(order ? (order.status as OrderStatus) : "aprovado")
-
-  // Atualiza o passo ativo quando o pedido muda (ex: carregamento inicial)
+  // Buscar detalhes do pedido
   useEffect(() => {
-    if (order) {
-      setActiveStep(order.status as OrderStatus)
+    if (!token || !params.id) {
+      setLoading(false)
+      return
     }
-  }, [order])
 
-  if (!order) {
+    const fetchOrder = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const data = await getOrderDetail(params.id as string, token)
+        setOrder(data)
+        setActiveStep(data.status)
+      } catch (err) {
+        console.error("Erro ao buscar pedido:", err)
+        setError(err instanceof Error ? err.message : "Erro ao carregar pedido")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    void fetchOrder()
+  }, [token, params.id])
+
+  const handleReembolso = async () => {
+    if (!motivo.trim()) {
+      toast.error("Por favor, descreva o motivo do reembolso.")
+      return
+    }
+
+    if (!order || !token) return
+
+    try {
+      setSubmittingRefund(true)
+      
+      await requestRefund(order.orderId, motivo, token)
+      
+      toast.success("Solicitação de reembolso enviada com sucesso!")
+      setReembolsoModalOpen(false)
+      setMotivo("")
+      
+      // Recarregar pedido para atualizar status
+      const updatedOrder = await getOrderDetail(order.orderId, token)
+      setOrder(updatedOrder)
+    } catch (err) {
+      console.error("Erro ao solicitar reembolso:", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao solicitar reembolso")
+    } finally {
+      setSubmittingRefund(false)
+    }
+  }
+
+  if (loading) {
     return (
-      <div className="bg-background border border-border rounded-xl p-12 text-center">
-        <Package size={48} className="mx-auto mb-4 text-foreground/40" />
-        <p className="text-foreground/60">Pedido não encontrado</p>
-        <Link href="/minha-conta/pedidos" className="text-accent hover:underline mt-4 inline-block">
+      <div className="space-y-6">
+        <Link
+          href="/minha-conta/pedidos"
+          className="inline-flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors"
+        >
+          <ArrowLeft size={18} />
           Voltar para Meus Pedidos
         </Link>
+        <div className="bg-background border border-border rounded-xl p-12 text-center">
+          <Package size={48} className="mx-auto mb-4 text-foreground/40 animate-pulse" />
+          <p className="text-foreground/60">Carregando detalhes do pedido...</p>
+        </div>
       </div>
     )
   }
 
-  const currentStatusIndex = statusOrder.indexOf(order.status as OrderStatus)
-  const canRequestRefund = order.status === "entregue"
-
-  const handleReembolso = () => {
-    alert(`Solicitação de reembolso enviada!\nMotivo: ${motivo}`)
-    setReembolsoModalOpen(false)
-    setMotivo("")
+  if (error || !order) {
+    return (
+      <div className="space-y-6">
+        <Link
+          href="/minha-conta/pedidos"
+          className="inline-flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors"
+        >
+          <ArrowLeft size={18} />
+          Voltar para Meus Pedidos
+        </Link>
+        <div className="bg-background border border-border rounded-xl p-12 text-center">
+          <Package size={48} className="mx-auto mb-4 text-foreground/40" />
+          <p className="text-foreground/60 mb-4">{error || "Pedido não encontrado"}</p>
+          <Link href="/minha-conta/pedidos" className="text-accent hover:underline">
+            Voltar para Meus Pedidos
+          </Link>
+        </div>
+      </div>
+    )
   }
+
+  const currentStatusIndex = statusOrder.indexOf(order.status)
+  const canRequestRefund = order.isRefundable && (!order.refundStatus || order.refundStatus === "None")
+  const hasRefundRequest = order.refundStatus && order.refundStatus !== "None"
 
   const renderStepContent = () => {
     switch (activeStep) {
-      case "aprovado":
+      case "Aprovado":
         return (
           <div className="bg-background border border-border rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-start gap-4">
@@ -81,10 +168,6 @@ export default function PedidoDetalhesPage() {
                   Seu pagamento foi confirmado e o pedido foi encaminhado para produção.
                 </p>
                 <div className="bg-muted p-4 rounded-lg space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-foreground/60">Método de Pagamento</span>
-                    <span className="font-medium text-foreground">{order.pagamento}</span>
-                  </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-foreground/60">Data de Aprovação</span>
                     <span className="font-medium text-foreground">
@@ -100,7 +183,7 @@ export default function PedidoDetalhesPage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-foreground/60">Total Pago</span>
                     <span className="font-medium text-foreground">
-                      R$ {order.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      R$ {order.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -109,7 +192,7 @@ export default function PedidoDetalhesPage() {
           </div>
         )
 
-      case "em_producao":
+      case "Em Produção":
         return (
           <div className="bg-background border border-border rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-start gap-4">
@@ -131,7 +214,7 @@ export default function PedidoDetalhesPage() {
           </div>
         )
 
-      case "a_caminho":
+      case "À Caminho":
         return (
           <div className="bg-background border border-border rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-start gap-4">
@@ -144,28 +227,32 @@ export default function PedidoDetalhesPage() {
                   Seu pedido já está com a transportadora e logo chegará até você.
                 </p>
 
-                {(order as any).codigoRastreio ? (
+                {order.trackingCode ? (
                   <>
                     <div className="bg-muted p-4 rounded-lg space-y-3 mb-4">
                       <div className="flex items-center justify-between py-2 border-b border-border">
                         <span className="text-sm text-foreground/60">Código de Rastreio</span>
-                        <span className="font-mono font-medium text-foreground">{(order as any).codigoRastreio}</span>
+                        <span className="font-mono font-medium text-foreground">{order.trackingCode}</span>
                       </div>
-                      <div className="flex items-center justify-between py-2 border-b border-border">
-                        <span className="text-sm text-foreground/60">Transportadora</span>
-                        <span className="font-medium text-foreground">{(order as any).transportadora}</span>
-                      </div>
+                      {order.trackingCompany && (
+                        <div className="flex items-center justify-between py-2 border-b border-border">
+                          <span className="text-sm text-foreground/60">Transportadora</span>
+                          <span className="font-medium text-foreground">{order.trackingCompany}</span>
+                        </div>
+                      )}
                     </div>
 
-                    <a
-                      href={(order as any).urlRastreamento}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors"
-                    >
-                      <Truck size={18} />
-                      Rastrear Entrega
-                    </a>
+                    {order.trackingUrl && (
+                      <a
+                        href={order.trackingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors"
+                      >
+                        <Truck size={18} />
+                        Rastrear Entrega
+                      </a>
+                    )}
                   </>
                 ) : (
                   <div className="bg-yellow-50 text-yellow-800 p-4 rounded-lg text-sm">
@@ -177,7 +264,7 @@ export default function PedidoDetalhesPage() {
           </div>
         )
 
-      case "entregue":
+      case "Entregue":
         return (
           <div className="bg-background border border-border rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-start gap-4">
@@ -190,17 +277,19 @@ export default function PedidoDetalhesPage() {
                   Oba! Seu pedido foi entregue. Esperamos que você ame seus produtos!
                 </p>
                 
-                <div className="bg-muted p-4 rounded-lg mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <MapPin size={16} className="text-foreground/60" />
-                    <span className="text-sm font-medium text-foreground">Entregue em:</span>
+                {order.shippingAddress && (
+                  <div className="bg-muted p-4 rounded-lg mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <MapPin size={16} className="text-foreground/60" />
+                      <span className="text-sm font-medium text-foreground">Entregue em:</span>
+                    </div>
+                    <p className="text-sm text-foreground/70 ml-6">
+                      {order.shippingAddress.street}, {order.shippingAddress.number}
+                      <br />
+                      {order.shippingAddress.neighborhood} - {order.shippingAddress.city}/{order.shippingAddress.state}
+                    </p>
                   </div>
-                  <p className="text-sm text-foreground/70 ml-6">
-                    {order.endereco.rua}, {order.endereco.bairro}
-                    <br />
-                    {order.endereco.cidade} - {order.endereco.estado}
-                  </p>
-                </div>
+                )}
 
                 {canRequestRefund && (
                   <div className="space-y-3 border-t border-border pt-4">
@@ -242,7 +331,7 @@ export default function PedidoDetalhesPage() {
       <div className="bg-background border border-border rounded-xl p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-medium text-foreground">{order.id}</h1>
+            <h1 className="text-2xl font-medium text-foreground">{order.orderNumber}</h1>
             <p className="text-foreground/60 mt-1">
               Realizado em{" "}
               {new Date(order.createdAt).toLocaleDateString("pt-BR", {
@@ -253,15 +342,45 @@ export default function PedidoDetalhesPage() {
             </p>
           </div>
           <span
-            className={`inline-block px-4 py-2 rounded-full text-sm font-medium ${orderStatusColors[order.status]}`}
+            className={`inline-block px-4 py-2 rounded-full text-sm font-medium ${
+              orderStatusColors[order.status] || "bg-gray-100 text-gray-700"
+            }`}
           >
-            {orderStatusLabels[order.status]}
+            {order.status}
           </span>
         </div>
       </div>
 
+      {/* Payment Recovery Actions */}
+      {order.status === "Pendente" && order.canResume && order.initPoint && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <CreditCard className="text-yellow-600 mt-0.5" size={24} />
+            <div>
+              <h3 className="font-medium text-yellow-900">Pagamento Pendente</h3>
+              <p className="text-sm text-yellow-700 mt-1">
+                Seu pedido foi criado, mas o pagamento ainda não foi confirmado.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              if (order.initPoint) {
+                window.location.href = order.initPoint
+              }
+            }}
+            className="w-full flex items-center justify-center gap-2 bg-yellow-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-yellow-700 transition-colors"
+          >
+            <CreditCard size={18} />
+            Concluir Compra
+          </button>
+
+        </div>
+      )}
+
       {/* Status Timeline Navigation */}
-      {order.status !== "reembolsado" && order.status !== "cancelado" && (
+      {order.status !== "Reembolsado" && order.status !== "Cancelado" && (
         <div className="bg-background border border-border rounded-xl p-6">
           <h3 className="font-medium text-foreground mb-6">Linha do Tempo</h3>
           <div className="flex items-center justify-between relative">
@@ -323,27 +442,42 @@ export default function PedidoDetalhesPage() {
       )}
 
       {/* Dynamic Step Content */}
-      {order.status !== "reembolsado" && order.status !== "cancelado" && renderStepContent()}
+      {order.status !== "Reembolsado" && order.status !== "Cancelado" && renderStepContent()}
 
       {/* Cancelled/Refunded Status */}
-      {(order.status === "reembolsado" || order.status === "cancelado") && (
+      {(order.status === "Reembolsado" || order.status === "Cancelado") && (
         <div
           className={`border rounded-xl p-6 ${
-            order.status === "reembolsado" ? "bg-orange-50 border-orange-200" : "bg-red-50 border-red-200"
+            order.status === "Reembolsado" ? "bg-orange-50 border-orange-200" : "bg-red-50 border-red-200"
           }`}
         >
           <div className="flex items-center gap-3">
-            {order.status === "reembolsado" ? (
+            {order.status === "Reembolsado" ? (
               <RefreshCcw className="text-orange-600" size={24} />
             ) : (
               <XCircle className="text-red-600" size={24} />
             )}
             <div>
-              <p className={`font-medium ${order.status === "reembolsado" ? "text-orange-700" : "text-red-700"}`}>
-                {order.status === "reembolsado" ? "Pedido Reembolsado" : "Pedido Cancelado"}
+              <p className={`font-medium ${order.status === "Reembolsado" ? "text-orange-700" : "text-red-700"}`}>
+                {order.status === "Reembolsado" ? "Pedido Reembolsado" : "Pedido Cancelado"}
               </p>
-              <p className={`text-sm ${order.status === "reembolsado" ? "text-orange-600" : "text-red-600"}`}>
-                Atualizado em {new Date(order.updatedAt).toLocaleDateString("pt-BR")}
+              <p className={`text-sm ${order.status === "Reembolsado" ? "text-orange-600" : "text-red-600"}`}>
+                Status: {order.refundStatus || "Processando"}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Refund Request Status */}
+      {hasRefundRequest && order.status !== "Reembolsado" && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-6">
+          <div className="flex items-center gap-3">
+            <RefreshCcw className="text-orange-600" size={24} />
+            <div>
+              <p className="font-medium text-orange-700">Solicitação de Reembolso</p>
+              <p className="text-sm text-orange-600">
+                Status: {order.refundStatus}
               </p>
             </div>
           </div>
@@ -358,17 +492,21 @@ export default function PedidoDetalhesPage() {
             {order.items.map((item, idx) => (
               <div key={idx} className="flex items-center justify-between py-4 border-b border-border last:border-0">
                 <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center">
-                    <Package size={24} className="text-foreground/40" />
+                  <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center overflow-hidden">
+                    {item.thumbnailUrl ? (
+                      <img src={item.thumbnailUrl} alt={item.productName} className="w-full h-full object-cover" />
+                    ) : (
+                      <Package size={24} className="text-foreground/40" />
+                    )}
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">{item.produtoNome}</p>
-                    <p className="text-sm text-foreground/60">Qtd: {item.quantidade}</p>
+                    <p className="font-medium text-foreground">{item.productName}</p>
+                    <p className="text-sm text-foreground/60">Qtd: {item.quantity}</p>
                   </div>
                 </div>
                 <p className="font-medium text-foreground">
                   R${" "}
-                  {(item.precoUnitario * item.quantidade).toLocaleString("pt-BR", {
+                  {(item.unitPrice * item.quantity).toLocaleString("pt-BR", {
                     minimumFractionDigits: 2,
                   })}
                 </p>
@@ -385,14 +523,14 @@ export default function PedidoDetalhesPage() {
             <div className="flex justify-between text-sm">
               <span className="text-foreground/60">Frete</span>
               <span>
-                {order.frete === 0
+                {order.shippingAmount === 0
                   ? "Grátis"
-                  : `R$ ${order.frete.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                  : `R$ ${order.shippingAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
               </span>
             </div>
             <div className="flex justify-between font-semibold text-lg pt-2">
               <span>Total</span>
-              <span>R$ {order.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+              <span>R$ {order.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
         </div>
@@ -400,26 +538,36 @@ export default function PedidoDetalhesPage() {
         {/* Sidebar Info */}
         <div className="space-y-6">
           {/* Delivery Address */}
-          <div className="bg-background border border-border rounded-xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <MapPin size={18} className="text-foreground/60" />
-              <h3 className="font-medium text-foreground">Endereço de Entrega</h3>
+          {order.shippingAddress && (
+            <div className="bg-background border border-border rounded-xl p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <MapPin size={18} className="text-foreground/60" />
+                <h3 className="font-medium text-foreground">Endereço de Entrega</h3>
+              </div>
+              <p className="text-sm text-foreground/70">{order.shippingAddress.street}, {order.shippingAddress.number}</p>
+              {order.shippingAddress.complement && (
+                <p className="text-sm text-foreground/70">{order.shippingAddress.complement}</p>
+              )}
+              <p className="text-sm text-foreground/70">
+                {order.shippingAddress.neighborhood} - {order.shippingAddress.city}/{order.shippingAddress.state}
+              </p>
+              <p className="text-sm text-foreground/70">CEP: {order.shippingAddress.zipCode}</p>
             </div>
-            <p className="text-sm text-foreground/70">{order.endereco.rua}</p>
-            <p className="text-sm text-foreground/70">
-              {order.endereco.bairro} - {order.endereco.cidade}/{order.endereco.estado}
-            </p>
-            <p className="text-sm text-foreground/70">CEP: {order.endereco.cep}</p>
-          </div>
+          )}
 
-          {/* Payment */}
-          <div className="bg-background border border-border rounded-xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <CreditCard size={18} className="text-foreground/60" />
-              <h3 className="font-medium text-foreground">Pagamento</h3>
+          {/* Shipping Info */}
+          {order.shippingOption && (
+            <div className="bg-background border border-border rounded-xl p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Truck size={18} className="text-foreground/60" />
+                <h3 className="font-medium text-foreground">Frete</h3>
+              </div>
+              <p className="text-sm text-foreground/70">{order.shippingOption.name}</p>
+              <p className="text-sm text-foreground/60">
+                Prazo: {order.shippingOption.estimatedDays} dias úteis
+              </p>
             </div>
-            <p className="text-sm text-foreground/70">{order.pagamento}</p>
-          </div>
+          )}
 
           {/* Refund Button */}
           {canRequestRefund && (
@@ -451,7 +599,7 @@ export default function PedidoDetalhesPage() {
                 </div>
                 <div>
                   <h3 className="font-medium text-foreground">Solicitar Reembolso</h3>
-                  <p className="text-sm text-foreground/60">Pedido {order.id}</p>
+                  <p className="text-sm text-foreground/60">Pedido {order.orderNumber}</p>
                 </div>
               </div>
             </div>
@@ -479,16 +627,17 @@ export default function PedidoDetalhesPage() {
                   setReembolsoModalOpen(false)
                   setMotivo("")
                 }}
-                className="px-4 py-2 text-foreground/70 hover:text-foreground transition-colors"
+                disabled={submittingRefund}
+                className="px-4 py-2 text-foreground/70 hover:text-foreground transition-colors disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleReembolso}
-                disabled={!motivo.trim()}
+                disabled={!motivo.trim() || submittingRefund}
                 className="bg-orange-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Enviar Solicitação
+                {submittingRefund ? "Enviando..." : "Enviar Solicitação"}
               </button>
             </div>
           </div>

@@ -66,6 +66,15 @@ namespace memoriza_backend.Services.Admin.Orders
                 TrackingCompany = order.TrackingCompany,
                 TrackingUrl = order.TrackingUrl,
                 DeliveredAt = order.DeliveredAt,
+                ShippingAddressId = order.ShippingAddressId,
+                ShippingStreet = order.ShippingStreet,
+                ShippingNumber = order.ShippingNumber,
+                ShippingComplement = order.ShippingComplement,
+                ShippingNeighborhood = order.ShippingNeighborhood,
+                ShippingCity = order.ShippingCity,
+                ShippingState = order.ShippingState,
+                ShippingZipCode = order.ShippingZipCode,
+                ShippingCountry = order.ShippingCountry,
                 Items = items.Select(i => new OrderItemDto
                 {
                     ProductId = i.ProductId,

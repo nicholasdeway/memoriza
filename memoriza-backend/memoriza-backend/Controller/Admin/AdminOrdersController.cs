@@ -3,13 +3,13 @@ using memoriza_backend.Services.Admin.Orders;
 using Microsoft.AspNetCore.Mvc;
 using memoriza_backend.Filters;
 
-//using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 
 namespace memoriza_backend.Controllers.Admin
 {
     [ApiController]
     [Route("api/admin/orders")]
-    // [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin")]
     public class AdminOrdersController : ControllerBase
     {
         private readonly IAdminOrderService _service;
