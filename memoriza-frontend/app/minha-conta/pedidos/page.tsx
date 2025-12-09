@@ -4,27 +4,73 @@ import { useState, useEffect, Suspense } from "react"
 import { Package, ChevronRight, Search, X } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
-import { mockOrders, orderStatusLabels, orderStatusColors } from "@/lib/mock-data"
 import { useAuth } from "@/lib/auth-context"
 
 function PedidosPageInner() {
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const searchParams = useSearchParams()
   const router = useRouter()
   const statusFilter = searchParams.get("status")
   const [searchTerm, setSearchTerm] = useState("")
+  
+  // Estados para dados da API
+  const [orders, setOrders] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // Filtrar pedidos do usuário atual (usando pedidos da Maria para demo)
-  const userOrders = mockOrders.filter(
-    (order) => order.clienteId === user?.id || order.clienteId === "2"
-  )
+  // Buscar pedidos da API
+  useEffect(() => {
+    if (!token) {
+      setLoading(false)
+      return
+    }
 
-  const filteredOrders = userOrders.filter((order) => {
+    const fetchOrders = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const { getMyOrders } = await import("@/lib/api/orders")
+        const data = await getMyOrders(token)
+        
+        // Mapear para formato esperado pelo componente
+        const mappedOrders = data.map((order) => ({
+          id: order.orderNumber,
+          orderId: order.orderId,
+          createdAt: order.createdAt,
+          total: order.totalAmount,
+          status: order.status,
+          isRefundable: order.isRefundable,
+          refundStatus: order.refundStatus,
+          items: [], // Não temos items no summary, mas precisamos para a busca
+        }))
+        
+        setOrders(mappedOrders)
+      } catch (err) {
+        console.error("Erro ao buscar pedidos:", err)
+        setError(err instanceof Error ? err.message : "Erro ao carregar pedidos")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    void fetchOrders()
+  }, [token])
+
+  // Mapeamento de status para cores (mantendo compatibilidade)
+  const orderStatusColors: Record<string, string> = {
+    "Pendente": "bg-yellow-100 text-yellow-700",
+    "Aprovado": "bg-green-100 text-green-700",
+    "Em Produção": "bg-blue-100 text-blue-700",
+    "À Caminho": "bg-purple-100 text-purple-700",
+    "Entregue": "bg-emerald-100 text-emerald-700",
+    "Cancelado": "bg-red-100 text-red-700",
+    "Reembolsado": "bg-orange-100 text-orange-700",
+  }
+
+  const filteredOrders = orders.filter((order) => {
     const matchesSearch =
-      order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.items.some((item) =>
-        item.produtoNome.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      order.id.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesStatus = statusFilter ? order.status === statusFilter : true
 
@@ -33,6 +79,34 @@ function PedidosPageInner() {
 
   const clearFilter = () => {
     router.push("/minha-conta/pedidos")
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-background border border-border rounded-xl p-6">
+        <div className="text-center py-12 text-foreground/60">
+          <Package size={48} className="mx-auto mb-4 opacity-50 animate-pulse" />
+          <p>Carregando seus pedidos...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-background border border-border rounded-xl p-6">
+        <div className="text-center py-12 text-foreground/60">
+          <Package size={48} className="mx-auto mb-4 opacity-50" />
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-accent hover:underline"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -46,8 +120,7 @@ function PedidosPageInner() {
           {statusFilter && (
             <div className="flex items-center gap-2 mt-2">
               <span className="text-sm bg-accent/10 text-accent px-2 py-1 rounded-md">
-                Filtro:{" "}
-                {orderStatusLabels[statusFilter as keyof typeof orderStatusLabels]}
+                Filtro: {statusFilter}
               </span>
               <button
                 onClick={clearFilter}
@@ -79,8 +152,8 @@ function PedidosPageInner() {
       <div className="space-y-4">
         {filteredOrders.map((order) => (
           <Link
-            key={order.id}
-            href={`/minha-conta/pedidos/${order.id}`}
+            key={order.orderId}
+            href={`/minha-conta/pedidos/${order.orderId}`}
             className="block border border-border rounded-xl p-4 hover:border-accent/50 hover:bg-muted/30 transition-colors"
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -97,21 +170,11 @@ function PedidosPageInner() {
                       year: "numeric",
                     })}
                   </p>
-                  <p className="text-sm text-foreground/60 mt-1">
-                    {order.items.length}{" "}
-                    {order.items.length === 1 ? "item" : "itens"}
-                  </p>
-                  {order.status === "a_caminho" &&
-                    (order as any).codigoRastreio && (
-                      <div className="mt-2 text-xs text-accent">
-                        <p className="font-medium">
-                          Código: {(order as any).codigoRastreio}
-                        </p>
-                        <p className="text-foreground/60">
-                          {(order as any).transportadora}
-                        </p>
-                      </div>
-                    )}
+                  {order.refundStatus && order.refundStatus !== "None" && (
+                    <p className="text-xs text-orange-600 mt-1">
+                      Reembolso: {order.refundStatus}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -119,10 +182,10 @@ function PedidosPageInner() {
                 <div className="text-right">
                   <span
                     className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
-                      orderStatusColors[order.status]
+                      orderStatusColors[order.status] || "bg-gray-100 text-gray-700"
                     }`}
                   >
-                    {orderStatusLabels[order.status]}
+                    {order.status}
                   </span>
                   <p className="font-semibold text-foreground mt-2">
                     R${" "}

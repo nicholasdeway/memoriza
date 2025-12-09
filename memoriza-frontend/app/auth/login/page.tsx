@@ -41,7 +41,6 @@ export default function AuthPage() {
     confirmSenha: "",
   });
 
-  // estados para mostrar/ocultar senhas
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [showSignupConfirmPassword, setShowSignupConfirmPassword] =
@@ -55,24 +54,12 @@ export default function AuthPage() {
 
     if (!digits) return "";
 
-    if (digits.length <= 2) {
-      return `(${digits}`;
-    }
+    if (digits.length <= 2) return `(${digits}`;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10)
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
 
-    if (digits.length <= 6) {
-      return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-    }
-
-    if (digits.length <= 10) {
-      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(
-        6
-      )}`;
-    }
-
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(
-      7,
-      11
-    )}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
   };
 
   const unmaskPhone = (value: string): string => value.replace(/\D/g, "");
@@ -81,12 +68,8 @@ export default function AuthPage() {
     const trimmed = value.trim();
     if (!trimmed) return trimmed;
 
-    if (trimmed.includes("@")) {
-      // e-mail
-      return trimmed;
-    }
+    if (trimmed.includes("@")) return trimmed;
 
-    // telefone
     const digits = trimmed.replace(/\D/g, "");
     return digits || trimmed;
   };
@@ -96,9 +79,7 @@ export default function AuthPage() {
 
     let newValue = value;
 
-    if (name === "celular") {
-      newValue = formatPhone(value);
-    }
+    if (name === "celular") newValue = formatPhone(value);
 
     setFormData((prev) => ({
       ...prev,
@@ -117,7 +98,6 @@ export default function AuthPage() {
 
     try {
       if (isLogin) {
-        // LOGIN → usa identifier = email ou telefone
         const rawIdentifier = formData.email || formData.celular;
         const identifier = normalizeIdentifier(rawIdentifier);
 
@@ -129,7 +109,6 @@ export default function AuthPage() {
           setError(result.error || "Erro ao fazer login.");
         }
       } else {
-        // CADASTRO
         if (formData.senha !== formData.confirmSenha) {
           setError("Senha e confirmação de senha não conferem.");
           setIsLoading(false);
@@ -142,14 +121,11 @@ export default function AuthPage() {
           email: formData.email,
           password: formData.senha,
           confirmPassword: formData.confirmSenha,
-          // envia apenas dígitos para o backend
           phone: unmaskPhone(formData.celular) || undefined,
         });
 
         if (result.success) {
-          setSuccessMessage(
-            "Conta criada com sucesso! Redirecionando para o login..."
-          );
+          setSuccessMessage("Conta criada com sucesso! Redirecionando para o login...");
 
           setFormData((prev) => ({
             ...prev,
@@ -170,7 +146,6 @@ export default function AuthPage() {
     }
   };
 
-  // 🔹 Agora sem useSearchParams: usamos window.location.search
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -189,6 +164,7 @@ export default function AuthPage() {
 
       <div className="flex-1 flex items-center justify-center py-12 px-4">
         <div className="w-full max-w-md">
+
           {/* Toggle */}
           <div className="flex gap-4 mb-4">
             <button
@@ -205,6 +181,7 @@ export default function AuthPage() {
             >
               Login
             </button>
+
             <button
               onClick={() => {
                 setIsLogin(false);
@@ -238,9 +215,10 @@ export default function AuthPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+
             {isLogin ? (
               <>
-                {/* Login Form */}
+                {/* LOGIN */}
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
@@ -252,7 +230,7 @@ export default function AuthPage() {
                       placeholder="seu@email.com ou (99) 99999-9999"
                       value={formData.email}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-foreground/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                      className="w-full px-4 py-3 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
                     />
                   </div>
 
@@ -267,23 +245,14 @@ export default function AuthPage() {
                         placeholder="••••••••"
                         value={formData.senha}
                         onChange={handleInputChange}
-                        className="w-full px-4 pr-10 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-foreground/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                        className="w-full px-4 pr-10 py-3 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
                       />
                       <button
                         type="button"
-                        onClick={() =>
-                          setShowLoginPassword((prev) => !prev)
-                        }
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-foreground/60 hover:text-foreground/90"
-                        aria-label={
-                          showLoginPassword ? "Ocultar senha" : "Mostrar senha"
-                        }
+                        onClick={() => setShowLoginPassword((prev) => !prev)}
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-foreground/60"
                       >
-                        {showLoginPassword ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
+                        {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
@@ -291,7 +260,7 @@ export default function AuthPage() {
                   <div className="text-right">
                     <Link
                       href="/auth/forgot-password"
-                      className="text-sm text-accent hover:text-accent/80 transition-colors font-medium"
+                      className="text-sm text-accent hover:text-accent/80 font-medium"
                     >
                       Esqueceu a senha?
                     </Link>
@@ -300,68 +269,66 @@ export default function AuthPage() {
               </>
             ) : (
               <>
-                {/* Signup Form */}
+                {/* CADASTRO */}
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
+                    <label className="block text-sm font-medium mb-2">
                       Nome
                     </label>
                     <input
                       type="text"
                       name="nome"
-                      placeholder="João"
+                      placeholder="Seu nome"
                       value={formData.nome}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-foreground/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                      className="w-full px-4 py-3 rounded-lg border border-border bg-background"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
+                    <label className="block text-sm font-medium mb-2">
                       Sobrenome
                     </label>
                     <input
                       type="text"
                       name="sobrenome"
-                      placeholder="Silva"
+                      placeholder="Sobrenome"
                       value={formData.sobrenome}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-foreground/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                      className="w-full px-4 py-3 rounded-lg border border-border bg-background"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Celular
-                  </label>
+                  <label className="block text-sm font-medium mb-2">Celular</label>
                   <input
                     type="tel"
                     name="celular"
                     placeholder="(99) 99999-9999"
                     value={formData.celular}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-foreground/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="w-full px-4 py-3 rounded-lg border border-border bg-background"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    E-mail
-                  </label>
+                  <label className="block text-sm font-medium mb-2">E-mail</label>
                   <input
                     type="email"
                     name="email"
                     placeholder="seu@email.com"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-foreground/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="w-full px-4 py-3 rounded-lg border border-border bg-background"
                   />
                 </div>
 
+                {/* SENHA DO CADASTRO + AVISO */}
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Senha
-                  </label>
+                  <label className="block text-sm font-medium mb-2">Senha</label>
+
                   <div className="relative">
                     <input
                       type={showSignupPassword ? "text" : "password"}
@@ -369,31 +336,29 @@ export default function AuthPage() {
                       placeholder="••••••••"
                       value={formData.senha}
                       onChange={handleInputChange}
-                      className="w-full px-4 pr-10 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-foreground/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                      className="w-full px-4 pr-10 py-3 rounded-lg border border-border bg-background"
                     />
                     <button
                       type="button"
-                      onClick={() =>
-                        setShowSignupPassword((prev) => !prev)
-                      }
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-foreground/60 hover:text-foreground/90"
-                      aria-label={
-                        showSignupPassword ? "Ocultar senha" : "Mostrar senha"
-                      }
+                      onClick={() => setShowSignupPassword((prev) => !prev)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-foreground/60"
                     >
-                      {showSignupPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
+                      {showSignupPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+
+                  {/* AVISO ESPECÍFICO */}
+                  <p className="mt-1 text-xs text-foreground/60">
+                    A senha deve conter no mínimo 8 caracteres.
+                  </p>
                 </div>
 
+                {/* CONFIRMAR SENHA */}
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
+                  <label className="block text-sm font-medium mb-2">
                     Confirmar Senha
                   </label>
+
                   <div className="relative">
                     <input
                       type={showSignupConfirmPassword ? "text" : "password"}
@@ -401,52 +366,37 @@ export default function AuthPage() {
                       placeholder="••••••••"
                       value={formData.confirmSenha}
                       onChange={handleInputChange}
-                      className="w-full px-4 pr-10 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-foreground/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                      className="w-full px-4 pr-10 py-3 rounded-lg border border-border bg-background"
                     />
                     <button
                       type="button"
                       onClick={() =>
                         setShowSignupConfirmPassword((prev) => !prev)
                       }
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-foreground/60 hover:text-foreground/90"
-                      aria-label={
-                        showSignupConfirmPassword
-                          ? "Ocultar senha"
-                          : "Mostrar senha"
-                      }
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-foreground/60"
                     >
-                      {showSignupConfirmPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
+                      {showSignupConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
 
                 <div className="flex items-start gap-2 pt-2">
-                  <input
-                    type="checkbox"
-                    id="terms"
-                    className="mt-1 accent-accent"
-                  />
-                  <label
-                    htmlFor="terms"
-                    className="text-sm text-foreground/70"
-                  >
+                  <input type="checkbox" id="terms" className="mt-1 accent-accent" />
+                  <label htmlFor="terms" className="text-sm text-foreground/70">
                     Concordo com os{" "}
-                    <Link
-                      href="/terms"
-                      className="text-accent hover:text-accent/80 font-medium"
-                    >
+                    <Link href="/terms" className="text-accent hover:text-accent/80 font-medium">
                       Termos de Serviço
                     </Link>
                   </label>
                 </div>
+
+                {/* AVISO FIXO PARA CADASTRO */}
+                <p className="text-xs text-foreground/60 pt-2">
+                  Para criar sua conta, utilize uma senha com pelo menos 8 caracteres.
+                </p>
               </>
             )}
 
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
@@ -469,16 +419,14 @@ export default function AuthPage() {
               <div className="w-full border-t border-border"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-background text-foreground/50">
-                Ou continue com
-              </span>
+              <span className="px-2 bg-background text-foreground/50">Ou continue com</span>
             </div>
           </div>
 
-          {/* Social Login → Google */}
+          {/* GOOGLE LOGIN */}
           <GoogleSignIn />
 
-          {/* Toggle Message */}
+          {/* Swap login/cadastro */}
           <p className="text-center text-sm text-foreground/70 mt-6">
             {isLogin ? "Não tem uma conta? " : "Já tem uma conta? "}
             <button

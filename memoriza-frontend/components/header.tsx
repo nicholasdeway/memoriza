@@ -75,6 +75,7 @@ const MAX_VISIBLE_CATEGORIES = 10;
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [moreCategoriesOpen, setMoreCategoriesOpen] = useState(false);
@@ -265,7 +266,10 @@ export function Header() {
             {/* Right Icons */}
             <div className="flex items-center space-x-6 shrink-0">
               {/* Search mobile icon */}
-              <button className="md:hidden text-foreground hover:text-accent transition-colors">
+              <button 
+                onClick={() => setMobileSearchOpen(true)}
+                className="md:hidden text-foreground hover:text-accent transition-colors"
+              >
                 <Search size={20} />
               </button>
 
@@ -592,6 +596,51 @@ export function Header() {
                 </Link>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Search Modal */}
+      {mobileSearchOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[9999] p-4 md:hidden">
+          <div className="bg-background border border-border rounded-xl w-full max-w-md mt-20 p-6 relative shadow-xl">
+            <button
+              onClick={() => setMobileSearchOpen(false)}
+              className="absolute top-4 right-4 p-2 hover:bg-muted rounded-lg transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Search className="text-primary" size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-foreground">
+                  Buscar Produtos
+                </h3>
+                <p className="text-sm text-foreground/60">
+                  Encontre o que você procura
+                </p>
+              </div>
+            </div>
+
+            <div className="relative">
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/50"
+                size={18}
+              />
+              <input
+                type="text"
+                placeholder="Buscar produtos, categorias..."
+                autoFocus
+                className="w-full pl-12 pr-4 py-3 bg-muted/25 border border-border rounded-lg text-sm text-foreground placeholder:text-foreground/50 focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+              />
+            </div>
+
+            <p className="text-xs text-foreground/60 mt-4">
+              Digite para buscar produtos, categorias e muito mais.
+            </p>
           </div>
         </div>
       )}

@@ -66,6 +66,16 @@ interface OrderDetailApi {
   trackingUrl?: string | null
   deliveredAt?: string | null
 
+  shippingAddressId?: string | null
+  shippingStreet?: string | null
+  shippingNumber?: string | null
+  shippingComplement?: string | null
+  shippingNeighborhood?: string | null
+  shippingCity?: string | null
+  shippingState?: string | null
+  shippingZipCode?: string | null
+  shippingCountry?: string | null
+
   items: OrderItemApi[]
 }
 
@@ -100,6 +110,16 @@ type OrderDetail = {
   trackingCompany?: string | null
   trackingUrl?: string | null
   deliveredAt?: string | null
+
+  shippingAddressId?: string | null
+  shippingStreet?: string | null
+  shippingNumber?: string | null
+  shippingComplement?: string | null
+  shippingNeighborhood?: string | null
+  shippingCity?: string | null
+  shippingState?: string | null
+  shippingZipCode?: string | null
+  shippingCountry?: string | null
 
   items: {
     productId: string
@@ -262,6 +282,15 @@ export default function AdminPedidos() {
         trackingCompany: data.trackingCompany ?? null,
         trackingUrl: data.trackingUrl ?? null,
         deliveredAt: data.deliveredAt ?? null,
+        shippingAddressId: data.shippingAddressId ?? null,
+        shippingStreet: data.shippingStreet ?? null,
+        shippingNumber: data.shippingNumber ?? null,
+        shippingComplement: data.shippingComplement ?? null,
+        shippingNeighborhood: data.shippingNeighborhood ?? null,
+        shippingCity: data.shippingCity ?? null,
+        shippingState: data.shippingState ?? null,
+        shippingZipCode: data.shippingZipCode ?? null,
+        shippingCountry: data.shippingCountry ?? null,
         items: data.items.map((i) => ({
           productId: i.productId,
           productName: i.productName,
@@ -814,6 +843,44 @@ export default function AdminPedidos() {
                   </div>
                 </div>
               </div>
+
+              {/* Endereço de Entrega */}
+              {selectedOrder.shippingStreet && (
+                <div className="bg-muted rounded-lg p-4">
+                  <h3 className="font-medium text-foreground mb-3">
+                    Endereço de Entrega
+                  </h3>
+                  <div className="text-sm space-y-2">
+                    <div>
+                      <span className="text-foreground/60">Rua: </span>
+                      <span className="text-foreground">
+                        {selectedOrder.shippingStreet}
+                        {selectedOrder.shippingNumber && `, ${selectedOrder.shippingNumber}`}
+                      </span>
+                    </div>
+                    {selectedOrder.shippingComplement && (
+                      <div>
+                        <span className="text-foreground/60">Complemento: </span>
+                        <span className="text-foreground">{selectedOrder.shippingComplement}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-foreground/60">Bairro: </span>
+                      <span className="text-foreground">{selectedOrder.shippingNeighborhood}</span>
+                    </div>
+                    <div>
+                      <span className="text-foreground/60">Cidade: </span>
+                      <span className="text-foreground">
+                        {selectedOrder.shippingCity} - {selectedOrder.shippingState}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-foreground/60">CEP: </span>
+                      <span className="text-foreground">{selectedOrder.shippingZipCode}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Itens */}
               <div>

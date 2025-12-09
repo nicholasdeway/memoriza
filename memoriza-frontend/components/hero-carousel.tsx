@@ -51,7 +51,8 @@ const DefaultTemplate = ({ item }: { item: CarouselItem }) => (
 )
 
 const FullImageTemplate = ({ item }: { item: CarouselItem }) => (
-  <div className="w-full h-[400px] md:h-[500px] relative">
+  // Mobile mais baixo, desktop igual antes (400 / 500)
+  <div className="w-full h-[200px] sm:h-[240px] md:h-[400px] lg:h-[500px] relative">
     {item.imageUrl ? (
       <img
         src={item.imageUrl}
@@ -73,7 +74,8 @@ const FullImageTemplate = ({ item }: { item: CarouselItem }) => (
 )
 
 const OverlayTemplate = ({ item }: { item: CarouselItem }) => (
-  <div className="w-full h-[400px] md:h-[500px] relative overflow-hidden">
+  // Mesmo esquema de altura: baixo no mobile, igual antes no desktop
+  <div className="w-full h-[200px] sm:h-[240px] md:h-[400px] lg:h-[500px] relative overflow-hidden">
     {/* Background Image */}
     <div className="absolute inset-0">
       {item.imageUrl ? (
@@ -178,8 +180,9 @@ export function HeroCarousel() {
   const next = () => setCurrent((prev) => (prev + 1) % slides.length)
 
   if (isLoading) {
+    // Altura responsiva: baixa no mobile, igual antiga no desktop
     return (
-      <div className="w-full h-96 bg-muted animate-pulse flex items-center justify-center">
+      <div className="w-full h-[200px] sm:h-[240px] md:h-96 lg:h-[500px] bg-muted animate-pulse flex items-center justify-center">
         <span className="sr-only">Carregando...</span>
       </div>
     )

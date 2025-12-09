@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { ShoppingCart, Users, RefreshCcw, DollarSign, Package, Calendar } from "lucide-react"
 import {
   mockDashboardMetrics,
@@ -11,10 +12,66 @@ import {
   orderStatusColors,
 } from "@/lib/mock-data"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts"
+import { useAuth } from "@/lib/auth-context"
+
+// Menu structure from admin-sidebar
+const menuSections = [
+  {
+    title: "Principal",
+    items: [
+      { href: "/admin", module: "dashboard" },
+      { href: "/admin/produtos", module: "products" },
+      { href: "/admin/categorias", module: "categories" },
+      { href: "/admin/tamanhos", module: "sizes" },
+      { href: "/admin/cores", module: "colors" },
+      { href: "/admin/pedidos", module: "orders" },
+      { href: "/admin/carrossel", module: "carousel" },
+      { href: "/admin/configuracoes", module: "settings" },
+    ],
+  },
+  {
+    title: "Gestão da Empresa",
+    items: [
+      { href: "/admin/gestao-empresa/funcionarios", module: "employees" },
+      { href: "/admin/gestao-empresa/grupos", module: "groups" },
+      { href: "/admin/gestao-empresa/logs", module: "logs" },
+    ],
+  },
+]
 
 export default function AdminDashboard() {
+  const router = useRouter()
+  const { user } = useAuth()
   const [dateFilter, setDateFilter] = useState("30dias")
   const [customDate, setCustomDate] = useState("")
+
+  // Verificar permissões e redirecionar se necessário
+  useEffect(() => {
+    if (!user) return
+
+    // Proprietário (admin sem employeeGroupId) sempre tem acesso ao dashboard
+    if (!user.employeeGroupId) return
+
+    // Funcionário: verificar se tem permissão ao dashboard
+    const allowedModules: string[] = Array.isArray((user as any)?.modules)
+      ? ((user as any).modules as string[])
+      : []
+
+    // Se não tem permissão ao dashboard, redirecionar para primeira página permitida
+    if (!allowedModules.includes("dashboard")) {
+      // Buscar primeira página permitida
+      for (const section of menuSections) {
+        for (const item of section.items) {
+          if (item.module && item.module !== "dashboard" && allowedModules.includes(item.module)) {
+            router.push(item.href)
+            return
+          }
+        }
+      }
+      // Se não encontrou nenhuma página permitida, redirecionar para home
+      router.push("/")
+    }
+  }, [user, router])
 
   // Simulação de filtro em cima dos mocks (sem usar datas reais)
   const getSalesDataByFilter = () => {
