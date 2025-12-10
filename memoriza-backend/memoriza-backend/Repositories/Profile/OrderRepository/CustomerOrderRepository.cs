@@ -49,7 +49,18 @@ namespace memoriza_backend.Repositories.Profile
                     refund_status AS ""RefundStatus"",
                     refund_reason AS ""RefundReason"",
                     refund_requested_at AS ""RefundRequestedAt"",
-                    refund_processed_at AS ""RefundProcessedAt""
+                    refund_processed_at AS ""RefundProcessedAt"",
+                    preference_id AS ""PreferenceId"",
+                    init_point AS ""InitPoint"",
+                    sandbox_init_point AS ""SandboxInitPoint"",
+                    shipping_street AS ""ShippingStreet"",
+                    shipping_number AS ""ShippingNumber"",
+                    shipping_complement AS ""ShippingComplement"",
+                    shipping_neighborhood AS ""ShippingNeighborhood"",
+                    shipping_city AS ""ShippingCity"",
+                    shipping_state AS ""ShippingState"",
+                    shipping_zip_code AS ""ShippingZipCode"",
+                    shipping_country AS ""ShippingCountry""
                 FROM orders
                 WHERE id = @Id AND user_id = @UserId;
             ";
@@ -100,7 +111,11 @@ namespace memoriza_backend.Repositories.Profile
                     delivered_at,
                     tracking_code, tracking_company, tracking_url,
                     is_refundable, refund_status, refund_reason,
-                    refund_requested_at, refund_processed_at
+                    refund_requested_at, refund_processed_at,
+                    shipping_address_id, shipping_street, shipping_number,
+                    shipping_complement, shipping_neighborhood, shipping_city,
+                    shipping_state, shipping_zip_code, shipping_country,
+                    preference_id, init_point, sandbox_init_point
                 )
                 VALUES (
                     @Id, @OrderNumber, @UserId, @CreatedAt,
@@ -109,7 +124,11 @@ namespace memoriza_backend.Repositories.Profile
                     @DeliveredAt,
                     @TrackingCode, @TrackingCompany, @TrackingUrl,
                     @IsRefundable, @RefundStatus, @RefundReason,
-                    @RefundRequestedAt, @RefundProcessedAt
+                    @RefundRequestedAt, @RefundProcessedAt,
+                    @ShippingAddressId, @ShippingStreet, @ShippingNumber,
+                    @ShippingComplement, @ShippingNeighborhood, @ShippingCity,
+                    @ShippingState, @ShippingZipCode, @ShippingCountry,
+                    @PreferenceId, @InitPoint, @SandboxInitPoint
                 );
             ";
 
@@ -135,7 +154,19 @@ namespace memoriza_backend.Repositories.Profile
                 RefundStatus = order.RefundStatus,
                 RefundReason = order.RefundReason,
                 RefundRequestedAt = order.RefundRequestedAt,
-                RefundProcessedAt = order.RefundProcessedAt
+                RefundProcessedAt = order.RefundProcessedAt,
+                ShippingAddressId = order.ShippingAddressId,
+                ShippingStreet = order.ShippingStreet,
+                ShippingNumber = order.ShippingNumber,
+                ShippingComplement = order.ShippingComplement,
+                ShippingNeighborhood = order.ShippingNeighborhood,
+                ShippingCity = order.ShippingCity,
+                ShippingState = order.ShippingState,
+                ShippingZipCode = order.ShippingZipCode,
+                ShippingCountry = order.ShippingCountry,
+                PreferenceId = order.PreferenceId,
+                InitPoint = order.InitPoint,
+                SandboxInitPoint = order.SandboxInitPoint
             });
         }
 
@@ -278,6 +309,59 @@ namespace memoriza_backend.Repositories.Profile
                 Url = url,
                 Status = OrderStatusCodes.Shipped
             });
+        }
+
+        // ============================================================
+        // UPDATE (MERCADO PAGO FIELDS)
+        // ============================================================
+        public async Task UpdateAsync(Order order)
+        {
+            const string sql = @"
+                UPDATE orders
+                SET 
+                    preference_id = @PreferenceId,
+                    init_point = @InitPoint,
+                    sandbox_init_point = @SandboxInitPoint
+                WHERE id = @Id;
+            ";
+
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.ExecuteAsync(sql, new
+            {
+                Id = order.Id,
+                PreferenceId = order.PreferenceId,
+                InitPoint = order.InitPoint,
+                SandboxInitPoint = order.SandboxInitPoint
+            });
+        }
+
+        // ============================================================
+        // GET EXPIRED PENDING ORDERS
+        // ============================================================
+        public async Task<List<Order>> GetExpiredPendingOrdersAsync(double expirationHours)
+        {
+            // Converter horas para minutos
+            int expirationMinutes = (int)(expirationHours * 60);
+            
+            const string sql = @"
+                SELECT
+                    id,
+                    user_id::text AS ""UserId"",
+                    order_number AS ""OrderNumber"",
+                    created_at AS ""CreatedAt"",
+                    status AS ""Status""
+                FROM orders
+                WHERE status = @PendingStatus
+                  AND created_at < NOW() - (@ExpirationMinutes || ' minutes')::INTERVAL
+                ORDER BY created_at ASC";
+
+            await using var conn = new NpgsqlConnection(_connectionString);
+            var orders = await conn.QueryAsync<Order>(sql, new 
+            { 
+                PendingStatus = OrderStatusCodes.Pending,
+                ExpirationMinutes = expirationMinutes
+            });
+            return orders.ToList();
         }
     }
 }

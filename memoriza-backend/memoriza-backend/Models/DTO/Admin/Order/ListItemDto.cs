@@ -62,6 +62,17 @@ namespace memoriza_backend.Models.DTO.Admin.Order
         public string? TrackingUrl { get; set; }
         public DateTime? DeliveredAt { get; set; }
 
+        // Endereço de Entrega (Snapshot)
+        public Guid? ShippingAddressId { get; set; }
+        public string? ShippingStreet { get; set; }
+        public string? ShippingNumber { get; set; }
+        public string? ShippingComplement { get; set; }
+        public string? ShippingNeighborhood { get; set; }
+        public string? ShippingCity { get; set; }
+        public string? ShippingState { get; set; }
+        public string? ShippingZipCode { get; set; }
+        public string? ShippingCountry { get; set; }
+
         public List<OrderItemDto> Items { get; set; } = new();
     }
 

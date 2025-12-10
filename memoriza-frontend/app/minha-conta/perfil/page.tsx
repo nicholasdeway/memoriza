@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { User, Lock, Trash2, Eye, EyeOff, Check } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,6 +54,7 @@ type ErrorResponse = {
 export default function PerfilPage() {
   const { user, token, logout, updateUserFromProfile } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState<"dados" | "senha" | "excluir">(
     "dados"
@@ -255,7 +257,19 @@ export default function PerfilPage() {
           }
         }
 
-        setErroDados(message);
+        // Verifica se é erro de número duplicado e exibe toast e mensagem específica
+        if (message.includes("Já existe uma conta cadastrada com este número")) {
+          const mensagemEspecifica = "Este número de celular já está cadastrado em outra conta.";
+          toast({
+            title: "Número já cadastrado",
+            description: mensagemEspecifica,
+            variant: "destructive",
+          });
+          setErroDados(mensagemEspecifica);
+        } else {
+          setErroDados(message);
+        }
+        
         return;
       }
 

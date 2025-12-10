@@ -3,6 +3,16 @@
 import { useEffect, useState } from "react"
 import { Plus, MapPin, Edit2, Trash2, Check, X } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
@@ -22,17 +32,32 @@ interface Endereco {
 
 interface AddressResponseApi {
   id: string
-  label: string
-  street: string
-  number: string
+  label: string | null
+  street: string | null
+  number: string | null
   complement: string | null
-  neighborhood: string
-  city: string
-  state: string
-  zipCode: string
-  country: string
+  neighborhood: string | null
+  city: string | null
+  state: string | null
+  zipCode: string | null
+  country: string | null
   isDefault: boolean
   createdAt: string
+}
+
+// Tipos da BrasilAPI
+interface BrasilApiCepSuccess {
+  cep: string
+  state: string
+  city: string
+  neighborhood: string
+  street: string
+}
+
+interface BrasilApiError {
+  name: "BadRequestError" | "NotFoundError" | "InternalError"
+  message: string
+  type: string
 }
 
 export default function EnderecosPage() {
@@ -43,6 +68,16 @@ export default function EnderecosPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  const [cepLoading, setCepLoading] = useState(false)
+  const [cepError, setCepError] = useState<string | null>(null)
+
+  // Estado para AlertDialog de exclusão
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean
+    addressId: string | null
+    addressLabel: string
+  }>({ open: false, addressId: null, addressLabel: "" })
 
   const [form, setForm] = useState<Omit<Endereco, "id">>({
     apelido: "",
@@ -59,14 +94,14 @@ export default function EnderecosPage() {
   function mapApiToEndereco(a: AddressResponseApi): Endereco {
     return {
       id: a.id,
-      apelido: a.label,
-      cep: a.zipCode,
-      rua: a.street,
-      numero: a.number,
+      apelido: a.label ?? "",
+      cep: a.zipCode ?? "",
+      rua: a.street ?? "",
+      numero: a.number ?? "",
       complemento: a.complement ?? "",
-      bairro: a.neighborhood,
-      cidade: a.city,
-      estado: a.state,
+      bairro: a.neighborhood ?? "",
+      cidade: a.city ?? "",
+      estado: a.state ?? "",
       principal: a.isDefault,
     }
   }
@@ -112,20 +147,22 @@ export default function EnderecosPage() {
       principal: false,
     })
     setEditingId(null)
+    setCepError(null)
+    setCepLoading(false)
   }
 
   const handleOpenModal = (endereco?: Endereco) => {
     if (endereco) {
       setEditingId(endereco.id)
       setForm({
-        apelido: endereco.apelido,
-        cep: endereco.cep,
-        rua: endereco.rua,
-        numero: endereco.numero,
-        complemento: endereco.complemento,
-        bairro: endereco.bairro,
-        cidade: endereco.cidade,
-        estado: endereco.estado,
+        apelido: endereco.apelido || "",
+        cep: endereco.cep || "",
+        rua: endereco.rua || "",
+        numero: endereco.numero || "",
+        complemento: endereco.complemento || "",
+        bairro: endereco.bairro || "",
+        cidade: endereco.cidade || "",
+        estado: endereco.estado || "",
         principal: endereco.principal,
       })
     } else {
@@ -143,17 +180,20 @@ export default function EnderecosPage() {
     setSaving(true)
 
     const payload = {
-      label: form.apelido,
-      street: form.rua,
-      number: form.numero,
-      complement: form.complemento || null,
-      neighborhood: form.bairro,
-      city: form.cidade,
-      state: form.estado,
-      zipCode: form.cep,
-      country: "Brasil",
-      isDefault: form.principal,
-    }
+    label: form.apelido || "",
+    street: form.rua || "",
+    number: form.numero || "",
+    complement: form.complemento || null,
+    neighborhood: form.bairro || "",
+    city: form.cidade || "",
+    state: form.estado || "",
+    zipCode:
+      form.cep && form.cep.length === 8
+        ? formatCepMask(form.cep)
+        : form.cep || "",
+    country: "Brasil",
+    isDefault: form.principal,
+  }
 
     try {
       let url = `${API_BASE_URL}/api/profile/addresses`
@@ -192,16 +232,28 @@ export default function EnderecosPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!token) {
       alert("Você precisa estar logado para gerenciar endereços.")
       return
     }
 
-    if (!confirm("Tem certeza que deseja excluir este endereço?")) return
+    const endereco = enderecos.find((e) => e.id === id)
+    if (!endereco) return
+
+    setDeleteDialog({
+      open: true,
+      addressId: id,
+      addressLabel: endereco.apelido || "este endereço",
+    })
+  }
+
+  const confirmDelete = async () => {
+    const { addressId } = deleteDialog
+    if (!addressId || !token) return
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/profile/addresses/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/profile/addresses/${addressId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -214,10 +266,12 @@ export default function EnderecosPage() {
         return
       }
 
-      setEnderecos((prev) => prev.filter((e) => e.id !== id))
+      setEnderecos((prev) => prev.filter((e) => e.id !== addressId))
     } catch (err) {
       console.error("Erro ao excluir endereço:", err)
       alert("Ocorreu um erro ao excluir o endereço.")
+    } finally {
+      setDeleteDialog({ open: false, addressId: null, addressLabel: "" })
     }
   }
 
@@ -248,6 +302,71 @@ export default function EnderecosPage() {
     } catch (err) {
       console.error("Erro ao definir principal:", err)
       alert("Ocorreu um erro ao definir o endereço como principal.")
+    }
+  }
+
+  // ===== CEP helpers =====
+
+  // Mantém só números, até 8 dígitos
+  const sanitizeCep = (value: string) => {
+    return (value || "").replace(/\D/g, "").slice(0, 8)
+  }
+
+  // Aplica máscara 00000-000 apenas para exibição
+  const formatCepMask = (value: string) => {
+    const digits = sanitizeCep(value)
+    if (digits.length <= 5) return digits
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`
+  }
+
+  const handleCepChange = (value: string) => {
+    setCepError(null)
+    const sanitized = sanitizeCep(value)
+    setForm((prev) => ({ ...prev, cep: sanitized }))
+  }
+
+  const handleBuscarCep = async () => {
+    const cep = sanitizeCep(form.cep)
+
+    if (!cep || cep.length !== 8) {
+      setCepError("CEP deve conter exatamente 8 dígitos.")
+      return
+    }
+
+    setCepLoading(true)
+    setCepError(null)
+
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`)
+      const data = await res.json()
+
+      if (!res.ok) {
+        const err = data as BrasilApiError
+        if (err.name === "BadRequestError") {
+          setCepError("CEP inválido. Verifique e tente novamente.")
+        } else if (err.name === "NotFoundError") {
+          setCepError("CEP não encontrado.")
+        } else {
+          setCepError("Erro ao consultar CEP. Tente novamente em instantes.")
+        }
+        return
+      }
+
+      const address = data as BrasilApiCepSuccess
+
+      setForm((prev) => ({
+        ...prev,
+        cep: sanitizeCep(address.cep),
+        rua: address.street ?? "",
+        bairro: address.neighborhood ?? "",
+        cidade: address.city ?? "",
+        estado: address.state ?? "",
+      }))
+    } catch (error) {
+      console.error("Erro ao buscar CEP:", error)
+      setCepError("Erro de conexão ao buscar CEP.")
+    } finally {
+      setCepLoading(false)
     }
   }
 
@@ -298,17 +417,21 @@ export default function EnderecosPage() {
                   </div>
                   <div className="flex-1">
                     <p className="font-medium text-foreground">
-                      {endereco.apelido}
+                      {endereco.apelido || ""}
                     </p>
                     <p className="text-sm text-foreground/60 mt-2">
-                      {endereco.rua}, {endereco.numero}
+                      {endereco.rua || ""}, {endereco.numero || ""}
                       {endereco.complemento && ` - ${endereco.complemento}`}
                     </p>
                     <p className="text-sm text-foreground/60">
-                      {endereco.bairro} - {endereco.cidade}/{endereco.estado}
+                      {(endereco.bairro || "") +
+                        " - " +
+                        (endereco.cidade || "") +
+                        "/" +
+                        (endereco.estado || "")}
                     </p>
                     <p className="text-sm text-foreground/60">
-                      CEP: {endereco.cep}
+                      CEP: {endereco.cep || ""}
                     </p>
                   </div>
                 </div>
@@ -376,7 +499,7 @@ export default function EnderecosPage() {
                   </label>
                   <input
                     type="text"
-                    value={form.apelido}
+                    value={form.apelido || ""}
                     onChange={(e) =>
                       setForm({ ...form, apelido: e.target.value })
                     }
@@ -386,15 +509,28 @@ export default function EnderecosPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">CEP</label>
-                  <input
-                    type="text"
-                    value={form.cep}
-                    onChange={(e) =>
-                      setForm({ ...form, cep: e.target.value })
-                    }
-                    placeholder="00000-000"
-                    className="w-full px-4 py-3 border border-border rounded-lg bg-background focus:outline-none focus:border-accent"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formatCepMask(form.cep)}
+                      onChange={(e) => handleCepChange(e.target.value)}
+                      onBlur={handleBuscarCep}
+                      placeholder="00000-000"
+                      className="w-full px-4 py-3 border border-border rounded-lg bg-background focus:outline-none focus:border-accent"
+                      disabled={cepLoading || saving}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleBuscarCep}
+                      disabled={cepLoading || !form.cep}
+                      className="px-3 py-2 text-sm rounded-lg border border-border bg-muted hover:bg-muted/80 disabled:opacity-60"
+                    >
+                      {cepLoading ? "Buscando..." : "Buscar"}
+                    </button>
+                  </div>
+                  {cepError && (
+                    <p className="mt-1 text-xs text-red-500">{cepError}</p>
+                  )}
                 </div>
               </div>
 
@@ -403,7 +539,7 @@ export default function EnderecosPage() {
                   <label className="block text-sm font-medium mb-2">Rua</label>
                   <input
                     type="text"
-                    value={form.rua}
+                    value={form.rua || ""}
                     onChange={(e) =>
                       setForm({ ...form, rua: e.target.value })
                     }
@@ -416,7 +552,7 @@ export default function EnderecosPage() {
                   </label>
                   <input
                     type="text"
-                    value={form.numero}
+                    value={form.numero || ""}
                     onChange={(e) =>
                       setForm({ ...form, numero: e.target.value })
                     }
@@ -431,7 +567,7 @@ export default function EnderecosPage() {
                 </label>
                 <input
                   type="text"
-                  value={form.complemento}
+                  value={form.complemento || ""}
                   onChange={(e) =>
                     setForm({ ...form, complemento: e.target.value })
                   }
@@ -444,7 +580,7 @@ export default function EnderecosPage() {
                 <label className="block text-sm font-medium mb-2">Bairro</label>
                 <input
                   type="text"
-                  value={form.bairro}
+                  value={form.bairro || ""}
                   onChange={(e) =>
                     setForm({ ...form, bairro: e.target.value })
                   }
@@ -459,7 +595,7 @@ export default function EnderecosPage() {
                   </label>
                   <input
                     type="text"
-                    value={form.cidade}
+                    value={form.cidade || ""}
                     onChange={(e) =>
                       setForm({ ...form, cidade: e.target.value })
                     }
@@ -472,9 +608,12 @@ export default function EnderecosPage() {
                   </label>
                   <input
                     type="text"
-                    value={form.estado}
+                    value={form.estado || ""}
                     onChange={(e) =>
-                      setForm({ ...form, estado: e.target.value.toUpperCase() })
+                      setForm({
+                        ...form,
+                        estado: e.target.value.toUpperCase(),
+                      })
                     }
                     placeholder="UF"
                     maxLength={2}
@@ -486,7 +625,7 @@ export default function EnderecosPage() {
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={form.principal}
+                  checked={!!form.principal}
                   onChange={(e) =>
                     setForm({ ...form, principal: e.target.checked })
                   }
@@ -520,6 +659,33 @@ export default function EnderecosPage() {
           </div>
         </div>
       )}
+
+      {/* AlertDialog de Confirmação de Exclusão */}
+      <AlertDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) =>
+          !open && setDeleteDialog({ open: false, addressId: null, addressLabel: "" })
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Endereço</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o endereço "{deleteDialog.addressLabel}"?
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

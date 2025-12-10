@@ -4,12 +4,15 @@ import { useState, useEffect, FormEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, MapPin, X, Check } from "lucide-react"
+import { toast } from "sonner"
 
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { WhatsAppButton } from "@/components/whatsapp-button"
 import { useCart } from "@/lib/cart-context"
 import { useAuth } from "@/lib/auth-context"
+import { checkout } from "@/lib/api/orders"
+import type { CreateOrderRequest } from "@/types/orders"
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
@@ -44,6 +47,29 @@ interface Endereco {
   principal: boolean
 }
 
+interface ShippingOption {
+  code: string
+  name: string
+  price: number
+  estimatedDays: number
+  isFreeShipping: boolean
+}
+
+// Tipos da BrasilAPI
+interface BrasilApiCepSuccess {
+  cep: string
+  state: string
+  city: string
+  neighborhood: string
+  street: string
+}
+
+interface BrasilApiError {
+  name: "BadRequestError" | "NotFoundError" | "InternalError"
+  message: string
+  type: string
+}
+
 export default function CheckoutPage() {
   const router = useRouter()
   const { items, subtotal, clearCart } = useCart()
@@ -58,6 +84,15 @@ export default function CheckoutPage() {
   const [addresses, setAddresses] = useState<Endereco[]>([])
   const [addressModalOpen, setAddressModalOpen] = useState(false)
   const [loadingAddresses, setLoadingAddresses] = useState(false)
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
+
+  // Estados para frete
+  const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([])
+  const [selectedShipping, setSelectedShipping] = useState<ShippingOption | null>(null)
+  const [loadingShipping, setLoadingShipping] = useState(false)
+  const [pickupInStore, setPickupInStore] = useState(false)
+  const [cepLoading, setCepLoading] = useState(false)
+  const [cepError, setCepError] = useState<string | null>(null)
 
   const [form, setForm] = useState({
     fullName: "",
@@ -121,6 +156,23 @@ export default function CheckoutPage() {
             principal: a.isDefault,
           }))
           setAddresses(mapped)
+
+          // ✅ Auto-preencher com endereço principal
+          const defaultAddress = mapped.find((addr) => addr.principal)
+          if (defaultAddress) {
+            console.log("Checkout: Preenchendo endereço principal automaticamente")
+            setSelectedAddressId(defaultAddress.id)
+            setForm((prev) => ({
+              ...prev,
+              street: defaultAddress.rua,
+              number: defaultAddress.numero,
+              complement: defaultAddress.complemento,
+              neighborhood: defaultAddress.bairro,
+              city: defaultAddress.cidade,
+              state: defaultAddress.estado,
+              zipCode: defaultAddress.cep,
+            }))
+          }
         } else {
           console.error("Checkout: Erro ao buscar endereços", res.status)
         }
@@ -135,6 +187,7 @@ export default function CheckoutPage() {
   }, [token])
 
   const handleSelectAddress = (addr: Endereco) => {
+    setSelectedAddressId(addr.id)
     setForm((prev) => ({
       ...prev,
       street: addr.rua,
@@ -146,6 +199,156 @@ export default function CheckoutPage() {
       zipCode: addr.cep,
     }))
     setAddressModalOpen(false)
+  }
+
+  // Calcular frete quando CEP estiver disponível
+  useEffect(() => {
+    const cepClean = form.zipCode.replace(/\D/g, "")
+    if (cepClean.length !== 8) {
+      setShippingOptions([])
+      setSelectedShipping(null)
+      return
+    }
+
+    const calculateShipping = async () => {
+      setLoadingShipping(true)
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/user/shipping/calculate`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: token ? `Bearer ${token}` : "",
+          },
+          body: JSON.stringify({
+            cep: cepClean,
+            pickupInStore: pickupInStore,
+            cartSubtotal: subtotal,
+          }),
+        })
+
+        if (res.ok) {
+          const data = await res.json()
+          setShippingOptions(data.options || [])
+
+          // Auto-seleciona a primeira opção
+          if (data.options && data.options.length > 0) {
+            setSelectedShipping(data.options[0])
+          } else {
+            toast.error("CEP não encontrado. Verifique se o CEP está correto.")
+          }
+        } else {
+          // Tratar erros específicos
+          if (res.status === 400) {
+            toast.error("CEP inválido. Por favor, verifique o formato do CEP.")
+          } else if (res.status === 404) {
+            toast.error("CEP não encontrado. Verifique se o CEP está correto.")
+          } else {
+            toast.error("Erro ao calcular frete. Tente novamente.")
+          }
+          setShippingOptions([])
+          setSelectedShipping(null)
+        }
+      } catch (error) {
+        console.error("Erro ao calcular frete:", error)
+        toast.error("Erro de conexão ao buscar CEP. Verifique sua internet.")
+        setShippingOptions([])
+        setSelectedShipping(null)
+      } finally {
+        setLoadingShipping(false)
+      }
+    }
+
+    void calculateShipping()
+  }, [form.zipCode, pickupInStore, subtotal, token])
+
+  // ===== CEP helpers =====
+
+  // Mantém só números, até 8 dígitos
+  const sanitizeCep = (value: string) => {
+    return (value || "").replace(/\D/g, "").slice(0, 8)
+  }
+
+  // Aplica máscara 00000-000 apenas para exibição
+  const formatCepMask = (value: string) => {
+    const digits = sanitizeCep(value)
+    if (digits.length <= 5) return digits
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`
+  }
+
+  const handleCepChange = (value: string) => {
+    setCepError(null)
+    const sanitized = sanitizeCep(value)
+    setForm((prev) => ({ ...prev, zipCode: sanitized }))
+  }
+
+  const handleBuscarCep = async () => {
+    const cep = sanitizeCep(form.zipCode)
+
+    if (!cep || cep.length !== 8) {
+      if (cep.length > 0 && cep.length < 8) {
+        setCepError("CEP deve conter exatamente 8 dígitos.")
+      }
+      return
+    }
+
+    setCepLoading(true)
+    setCepError(null)
+
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`)
+      const data = await res.json()
+
+      if (!res.ok) {
+        const err = data as BrasilApiError
+        if (err.name === "BadRequestError") {
+          setCepError("CEP inválido. Verifique e tente novamente.")
+        } else if (err.name === "NotFoundError") {
+          setCepError("CEP não encontrado.")
+        } else {
+          setCepError("Erro ao consultar CEP. Tente novamente em instantes.")
+        }
+        return
+      }
+
+      const address = data as BrasilApiCepSuccess
+
+      setForm((prev) => ({
+        ...prev,
+        zipCode: sanitizeCep(address.cep),
+        street: address.street ?? "",
+        neighborhood: address.neighborhood ?? "",
+        city: address.city ?? "",
+        state: address.state ?? "",
+      }))
+    } catch (error) {
+      console.error("Erro ao buscar CEP:", error)
+      setCepError("Erro de conexão ao buscar CEP.")
+    } finally {
+      setCepLoading(false)
+    }
+  }
+
+  // ===== Phone helpers =====
+
+  // Mantém só números, até 11 dígitos
+  const sanitizePhone = (value: string) => {
+    return (value || "").replace(/\D/g, "").slice(0, 11)
+  }
+
+  // Aplica máscara (00) 00000-0000 ou (00) 0000-0000
+  const formatPhoneMask = (value: string) => {
+    const digits = sanitizePhone(value)
+    if (digits.length <= 2) return digits
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+    if (digits.length <= 10) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+    }
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+  }
+
+  const handlePhoneChange = (value: string) => {
+    const sanitized = sanitizePhone(value)
+    setForm((prev) => ({ ...prev, phone: sanitized }))
   }
 
   if (!hydrated) {
@@ -183,87 +386,158 @@ export default function CheckoutPage() {
     )
   }
 
-  const shipping = subtotal > 100 ? 0 : 15
+  // ✅ Cálculo real de frete
+  const shipping = pickupInStore ? 0 : (selectedShipping?.price ?? 0)
   const total = subtotal + shipping
 
   const handleChange = (field: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-
-    // validação simples
-    if (!form.fullName || !form.email || !form.street || !form.city) {
-      alert("Preencha pelo menos nome, e-mail, rua e cidade.")
-      return
+  // Criar endereço automaticamente se necessário
+  const createAddressIfNeeded = async (): Promise<string | null> => {
+    // Se já tem endereço selecionado, usa ele
+    if (selectedAddressId) {
+      return selectedAddressId
     }
 
-    const orderPayload = {
-      customerName: form.fullName,
-      email: form.email,
-      phone: form.phone || null,
-      paymentMethod,
-      shippingAddress: {
-        label: "Principal",
+    // Se for retirada na loja, não precisa de endereço
+    if (pickupInStore) {
+      return null
+    }
+
+    // Criar endereço automaticamente
+    try {
+      const payload = {
+        label: "Endereço de entrega",
         street: form.street,
         number: form.number,
         complement: form.complement || null,
         neighborhood: form.neighborhood,
         city: form.city,
         state: form.state,
-        zipCode: form.zipCode,
-        country: form.country,
-        isDefault: true,
-      },
-      items: items.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        // no carrinho já temos o preço final unitário (normal ou promocional)
-        unitPrice: item.price,
-        promotionalPrice: null, // se o seu DTO permitir null; senão remova essa propriedade
-        sizeId: item.sizeId ?? null,
-        colorId: item.colorId ?? null,
-        personalizationText: item.personalizationText ?? null,
-      })),
-      totals: {
-        subtotal,
-        shipping,
-        total,
-      },
-    }
+        zipCode: formatCepMask(form.zipCode),
+        country: "Brasil",
+        isDefault: false,
+      }
 
-    //Confiogurar backend ainda
-    console.log("Order payload (frontend):", orderPayload)
-
-    try {
-      // Exemplo de chamada (ajuste a rota e DTO):
-      /*
-      const res = await fetch(`${API_BASE_URL}/api/store/orders`, {
+      const res = await fetch(`${API_BASE_URL}/api/profile/addresses`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Authorization: token ? `Bearer ${token}` : "",
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(orderPayload),
+        body: JSON.stringify(payload),
       })
 
       if (!res.ok) {
-        console.error("Erro ao criar pedido")
-        alert("Não foi possível finalizar o pedido. Tente novamente.")
-        return
+        throw new Error("Erro ao salvar endereço")
       }
 
-      const createdOrder = await res.json()
-      */
+      const createdAddress = await res.json()
+      return createdAddress.id
+    } catch (error) {
+      console.error("Erro ao criar endereço:", error)
+      return null
+    }
+  }
 
-      // Por enquanto, fluxo mockado:
-      alert("Pedido criado (mock)! Veja o payload no console.")
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+
+    // Validação: usuário deve estar logado
+    if (!token) {
+      toast.error("Você precisa estar logado para finalizar a compra.")
+      router.push("/login")
+      return
+    }
+
+    // Validação: nome completo obrigatório
+    if (!form.fullName || form.fullName.trim() === "") {
+      toast.error("Por favor, preencha seu nome completo.")
+      return
+    }
+
+    // Validação: telefone obrigatório
+    if (!form.phone || sanitizePhone(form.phone).length < 10) {
+      toast.error("Por favor, preencha um telefone válido com DDD.")
+      return
+    }
+
+    // Validação: campos de endereço obrigatórios (se não for retirada na loja)
+    if (!pickupInStore) {
+      if (!form.street || !form.number || !form.neighborhood || !form.city || !form.state || !form.zipCode) {
+        toast.error("Por favor, preencha todos os campos obrigatórios do endereço.")
+        return
+      }
+      
+      if (sanitizeCep(form.zipCode).length !== 8) {
+        toast.error("Por favor, preencha um CEP válido.")
+        return
+      }
+    }
+
+    // Validar se frete foi selecionado (exceto se for retirada)
+    if (!pickupInStore && !selectedShipping) {
+      toast.error("Por favor, selecione uma opção de frete ou marque 'Retirar na loja'.")
+      return
+    }
+
+    // Criar endereço se necessário
+    let addressId = selectedAddressId
+
+    if (!pickupInStore && !addressId) {
+      toast.loading("Salvando endereço...")
+      addressId = await createAddressIfNeeded()
+      toast.dismiss()
+
+      if (!addressId) {
+        toast.error("Erro ao salvar endereço. Tente novamente.")
+        return
+      }
+    }
+
+    // Preparar payload simplificado conforme DTO do backend
+    const orderRequest: CreateOrderRequest = {
+      shippingAmount: pickupInStore ? 0 : shipping,
+      shippingCode: pickupInStore ? "" : (selectedShipping?.code ?? ""),
+      shippingName: pickupInStore ? "" : (selectedShipping?.name ?? ""),
+      shippingEstimatedDays: pickupInStore ? 0 : (selectedShipping?.estimatedDays ?? 0),
+      pickupInStore: pickupInStore,
+      shippingAddressId: addressId || "",
+    }
+
+    try {
+      toast.loading("Processando pedido...")
+      
+      const response = await checkout(orderRequest, token)
+      
+      toast.dismiss()
+      toast.success("Pedido criado com sucesso!")
+      
+      console.log("✅ Pedido criado:", response)
+      
+      // Limpar carrinho
       clearCart()
-      router.push("/minha-conta/pedidos")
+      
+      // ✅ SEMPRE usar initPoint (PRODUÇÃO)
+      const paymentUrl = response.initPoint
+      
+      if (paymentUrl) {
+        window.location.href = paymentUrl
+      } else {
+        // Fallback: redirecionar para página de pedidos
+        router.push(`/minha-conta/pedidos/${response.orderId}`)
+      }
     } catch (err) {
+      toast.dismiss()
       console.error("Erro no checkout:", err)
-      alert("Erro ao conectar com o servidor.")
+      
+      if (err instanceof Error) {
+        toast.error(err.message)
+      } else {
+        toast.error("Erro ao conectar com o servidor. Tente novamente.")
+      }
     }
   }
 
@@ -301,7 +575,7 @@ export default function CheckoutPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-medium text-foreground mb-1">
-                          Nome completo
+                          Nome completo <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -310,6 +584,7 @@ export default function CheckoutPage() {
                             handleChange("fullName", e.target.value)
                           }
                           className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                          required
                         />
                       </div>
                       <div>
@@ -327,16 +602,15 @@ export default function CheckoutPage() {
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-foreground mb-1">
-                          Telefone / WhatsApp
+                          Telefone / WhatsApp <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="tel"
-                          value={form.phone}
-                          onChange={(e) =>
-                            handleChange("phone", e.target.value)
-                          }
+                          value={formatPhoneMask(form.phone)}
+                          onChange={(e) => handlePhoneChange(e.target.value)}
                           className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                           placeholder="(00) 00000-0000"
+                          required
                         />
                       </div>
                     </div>
@@ -360,7 +634,7 @@ export default function CheckoutPage() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="md:col-span-2">
                         <label className="block text-xs font-medium text-foreground mb-1">
-                          Rua / Avenida
+                          Rua / Avenida <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -373,7 +647,7 @@ export default function CheckoutPage() {
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-foreground mb-1">
-                          Número
+                          Número <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -403,7 +677,7 @@ export default function CheckoutPage() {
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-foreground mb-1">
-                          Bairro
+                          Bairro <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -416,24 +690,30 @@ export default function CheckoutPage() {
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-foreground mb-1">
-                          CEP
+                          CEP <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
-                          value={form.zipCode}
-                          onChange={(e) =>
-                            handleChange("zipCode", e.target.value)
-                          }
+                          value={formatCepMask(form.zipCode)}
+                          onChange={(e) => handleCepChange(e.target.value)}
+                          onBlur={handleBuscarCep}
                           className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                           placeholder="00000-000"
+                          disabled={cepLoading}
                         />
+                        {cepLoading && (
+                          <p className="mt-1 text-xs text-accent">Buscando CEP...</p>
+                        )}
+                        {cepError && (
+                          <p className="mt-1 text-xs text-red-500">{cepError}</p>
+                        )}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="md:col-span-2">
                         <label className="block text-xs font-medium text-foreground mb-1">
-                          Cidade
+                          Cidade <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -446,7 +726,7 @@ export default function CheckoutPage() {
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-foreground mb-1">
-                          UF
+                          UF <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -459,6 +739,74 @@ export default function CheckoutPage() {
                         />
                       </div>
                     </div>
+                  </section>
+
+                  {/* Método de Entrega */}
+                  <section className="space-y-4">
+                    <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
+                      Método de entrega
+                    </h2>
+
+                    {/* Checkbox Retirar na Loja */}
+                    <label className="flex items-center gap-2 cursor-pointer p-3 border border-border rounded-lg hover:border-primary/50 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={pickupInStore}
+                        onChange={(e) => setPickupInStore(e.target.checked)}
+                        className="w-4 h-4 accent-primary"
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium">Retirar na loja</span>
+                        <p className="text-xs text-foreground/60">Grátis • Respeitar o tempo de produção do pedido</p>
+                      </div>
+                    </label>
+
+                    {/* Opções de Frete */}
+                    {!pickupInStore && (
+                      <div className="space-y-2">
+                        {loadingShipping ? (
+                          <div className="p-4 text-center text-sm text-foreground/60 border border-border rounded-lg">
+                            Calculando frete...
+                          </div>
+                        ) : shippingOptions.length === 0 ? (
+                          <div className="p-4 text-center text-sm text-foreground/60 border border-border rounded-lg">
+                            Informe o CEP para calcular o frete
+                          </div>
+                        ) : (
+                          shippingOptions.map((option) => (
+                            <button
+                              key={option.code}
+                              type="button"
+                              onClick={() => setSelectedShipping(option)}
+                              className={`w-full p-3 rounded-lg border text-left transition-colors ${
+                                selectedShipping?.code === option.code
+                                  ? "border-primary bg-primary/5"
+                                  : "border-border hover:border-primary/50"
+                              }`}
+                            >
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <p className="font-medium text-sm">{option.name}</p>
+                                  <p className="text-xs text-foreground/60">
+                                    Entrega em {option.estimatedDays} dias úteis
+                                  </p>
+                                  {option.isFreeShipping && (
+                                    <p className="text-xs text-green-600 font-medium mt-1">
+                                      ✓ Frete grátis aplicado
+                                    </p>
+                                  )}
+                                </div>
+                                <p className="font-medium">
+                                  {option.price === 0 || option.isFreeShipping
+                                    ? "Grátis"
+                                    : `R$ ${option.price.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                </p>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </section>
 
                   {/* Pagamento */}
@@ -542,7 +890,7 @@ export default function CheckoutPage() {
                           <div className="text-xs text-foreground/60 mt-1 space-y-0.5">
                             <p>
                               Qtde: {item.quantity} · Unitário: R${" "}
-                              {item.price.toFixed(2)}
+                              {item.price.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                             {item.sizeName && (
                               <p>Tamanho: {item.sizeName}</p>
@@ -554,7 +902,7 @@ export default function CheckoutPage() {
                           </div>
 
                           <p className="text-sm font-medium text-foreground mt-1">
-                            R$ {lineTotal.toFixed(2)}
+                            R$ {lineTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                         </div>
                       </div>
@@ -565,21 +913,27 @@ export default function CheckoutPage() {
                 <div className="space-y-2 border-t border-border pt-4 text-sm">
                   <div className="flex justify-between text-foreground/70">
                     <span>Subtotal</span>
-                    <span>R$ {subtotal.toFixed(2)}</span>
+                    <span>R$ {subtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-foreground/70">
                     <span>Frete</span>
                     <span>
-                      {shipping === 0
-                        ? "Grátis"
-                        : `R$ ${shipping.toFixed(2)}`}
+                      {loadingShipping ? (
+                        <span className="text-accent">Calculando...</span>
+                      ) : pickupInStore || (selectedShipping && (selectedShipping.isFreeShipping || selectedShipping.price === 0)) ? (
+                        <span className="text-green-600">Grátis</span>
+                      ) : selectedShipping ? (
+                        `R$ ${shipping.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      ) : (
+                        <span className="text-orange-600">A calcular</span>
+                      )}
                     </span>
                   </div>
                 </div>
 
                 <div className="flex justify-between text-lg font-medium text-foreground pt-2 border-t border-border/60">
                   <span>Total</span>
-                  <span>R$ {total.toFixed(2)}</span>
+                  <span>R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
 
                 <p className="text-xs text-foreground/60">

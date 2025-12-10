@@ -6,6 +6,7 @@ namespace memoriza_backend.Repositories.Interfaces
     {
         Task<User?> GetByIdAsync(Guid userId);
         Task<User?> GetByEmailAsync(string email);
+        Task<User?> GetByPhoneAsync(string phone);
         Task UpdateAsync(User user);
         Task SoftDeleteAsync(Guid userId);
     }

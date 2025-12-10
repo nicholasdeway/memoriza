@@ -296,7 +296,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             success: false,
             error:
               data?.message ||
-              "Não foi possível criar a conta. Verifique os dados e tente novamente.",
+              "Não foi possível criar a conta. Certifique-se de que a senha tenha no mínimo 8 caracteres.",
           };
         }
 

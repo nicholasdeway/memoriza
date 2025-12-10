@@ -17,6 +17,7 @@ using memoriza_backend.Repositories.Interfaces;
 // ========== PROFILE (usuário) – REPOSITORIES ==========
 using memoriza_backend.Repositories.Profile;
 using memoriza_backend.Repositories.Profile.AddressRepository;
+using memoriza_backend.Repositories.Shipping;
 using memoriza_backend.Services.Admin.CarouselItems;
 // ========== ADMIN – SERVICES ==========
 using memoriza_backend.Services.Admin.Categories;
@@ -112,6 +113,7 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IProfileRepository, ProfileRepository>();
 builder.Services.AddScoped<ICustomerOrderRepository, CustomerOrderRepository>();
 builder.Services.AddScoped<ICartRepository, CartRepository>();
+builder.Services.AddScoped<IShippingRepository, ShippingRepository>();
 
 // --- Admin ---
 builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
@@ -141,10 +143,16 @@ builder.Services.AddScoped<memoriza_backend.Services.Auth.IUserService,
 builder.Services.AddScoped<IProfileUserService, ProfileUserService>();
 builder.Services.AddScoped<ICustomerOrderService, CustomerOrderService>();
 builder.Services.AddScoped<ICartService, CartService>();
-builder.Services.AddScoped<IShippingService, ShippingService>();
 builder.Services.AddScoped<IAddressService, AddressService>();
+
+// Configura os ranges de CEP do appsettings (ShippingRegions)
+builder.Services.Configure<List<ShippingRegionSettings>>(
+    builder.Configuration.GetSection("ShippingRegions")
+);
+
+// Frete (cálculo + regra de frete grátis)
 builder.Services.AddScoped<IShippingCalculatorService, ShippingCalculatorService>();
-builder.Services.Configure<List<ShippingRegionSettings>>(builder.Configuration.GetSection("ShippingRegions"));
+builder.Services.AddScoped<IShippingService, ShippingService>();
 
 // --- Admin ---
 builder.Services.AddScoped<ICategoryService, CategoryService>();
@@ -162,9 +170,16 @@ builder.Services.AddScoped<IEmployeeAccessLogService, EmployeeAccessLogService>(
 builder.Services.AddScoped<IMercadoPagoService, MercadoPagoService>();
 builder.Services.Configure<MercadoPagoSettings>(builder.Configuration.GetSection("MercadoPago"));
 
+// Installments Service with HttpClient
+builder.Services.AddHttpClient<IMercadoPagoInstallmentsService, MercadoPagoInstallmentsService>();
+builder.Services.AddMemoryCache();
+
 // --- Validations ---
 builder.Services.AddValidatorsFromAssemblyContaining<CreateOrderFromCartRequestValidator>();
 builder.Services.AddFluentValidationAutoValidation();
+
+// --- Background Services ---
+builder.Services.AddHostedService<memoriza_backend.Services.BackgroundJobs.OrderCancellationBackgroundService>();
 
 // ======================================================
 // AUTORIZAÇÃO

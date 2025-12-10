@@ -53,8 +53,7 @@ namespace memoriza_backend.Repositories.Profile
                     password,
                     password_reset_pending AS ""PasswordResetPending"",
                     phone,
-                    user_group_id          AS ""
-Id"",
+                    user_group_id          AS ""UserGroupId"",
                     auth_provider          AS ""AuthProvider"",
                     provider_user_id       AS ""ProviderUserId"",
                     provider_email         AS ""ProviderEmail"",
@@ -68,6 +67,33 @@ Id"",
 
             await using var conn = new NpgsqlConnection(_connectionString);
             return await conn.QueryFirstOrDefaultAsync<User>(sql, new { Email = email });
+        }
+
+        public async Task<User?> GetByPhoneAsync(string phone)
+        {
+            const string sql = @"
+                SELECT
+                    id,
+                    first_name             AS ""FirstName"",
+                    last_name              AS ""LastName"",
+                    email,
+                    password,
+                    password_reset_pending AS ""PasswordResetPending"",
+                    phone,
+                    user_group_id          AS ""UserGroupId"",
+                    auth_provider          AS ""AuthProvider"",
+                    provider_user_id       AS ""ProviderUserId"",
+                    provider_email         AS ""ProviderEmail"",
+                    picture_url            AS ""PictureUrl"",
+                    created_at             AS ""CreatedAt"",
+                    updated_at             AS ""UpdatedAt"",
+                    is_active              AS ""IsActive""
+                FROM users
+                WHERE phone = @Phone AND is_active = TRUE;
+            ";
+
+            await using var conn = new NpgsqlConnection(_connectionString);
+            return await conn.QueryFirstOrDefaultAsync<User>(sql, new { Phone = phone });
         }
 
         public async Task UpdateAsync(User user)

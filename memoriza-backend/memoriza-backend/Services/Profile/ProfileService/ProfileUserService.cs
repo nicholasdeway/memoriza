@@ -64,6 +64,14 @@ namespace memoriza_backend.Services.Profile.UserService
             else
             {
                 var digits = Regex.Replace(request.Phone, @"\D", "");
+                
+                // Verifica se o número já está em uso por outro usuário
+                var existingUser = await _userRepository.GetByPhoneAsync(digits);
+                if (existingUser != null && existingUser.Id != userId)
+                {
+                    return ServiceResult<UserProfileResponse>.Fail("Já existe uma conta cadastrada com este número de celular.");
+                }
+                
                 user.Phone = digits;
             }
 

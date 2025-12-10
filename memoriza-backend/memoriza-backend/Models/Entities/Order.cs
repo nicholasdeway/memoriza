@@ -63,5 +63,21 @@ namespace memoriza_backend.Models.Entities
         public string? RefundReason { get; set; }
         public DateTime? RefundRequestedAt { get; set; }
         public DateTime? RefundProcessedAt { get; set; }
+
+        // ---- Mercado Pago Payment Recovery ----
+        /// <summary>
+        /// ID da preferência do Mercado Pago para retomar pagamento
+        /// </summary>
+        public string? PreferenceId { get; set; }
+        
+        /// <summary>
+        /// URL de pagamento (produção)
+        /// </summary>
+        public string? InitPoint { get; set; }
+        
+        /// <summary>
+        /// URL de pagamento (sandbox)
+        /// </summary>
+        public string? SandboxInitPoint { get; set; }
     }
 }
