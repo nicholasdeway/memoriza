@@ -216,7 +216,7 @@ export function Header() {
   return (
     <>
       <PromoBanner />
-      <header className="sticky top-0 z-50 bg-background border-b border-border">
+      <header className="sticky top-0 z-50 bg-primary border-b border-white/10 shadow-sm transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20 gap-4">
             {/* Logo */}
@@ -235,14 +235,14 @@ export function Header() {
             {headerAddress && (
               <button
                 onClick={() => setAddressModalOpen(true)}
-                className="hidden lg:flex items-center gap-2 text-left hover:bg-muted/50 p-2 rounded-lg transition-colors max-w-[200px]"
+                className="hidden lg:flex items-center gap-2 text-left hover:bg-white/10 p-2 rounded-lg transition-colors max-w-[200px]"
               >
-                <MapPin className="text-primary shrink-0" size={20} />
+                <MapPin className="text-white shrink-0" size={20} />
                 <div className="flex flex-col leading-tight overflow-hidden">
-                  <span className="text-[10px] text-foreground/60 font-medium uppercase tracking-wide">
+                  <span className="text-[10px] text-white/70 font-medium uppercase tracking-wide">
                     Enviar para
                   </span>
-                  <span className="text-sm font-medium text-foreground truncate w-full">
+                  <span className="text-sm font-medium text-white truncate w-full">
                     {headerAddress.street}, {headerAddress.number}
                   </span>
                 </div>
@@ -253,13 +253,13 @@ export function Header() {
             <div className="flex-1 max-w-2xl hidden md:block">
               <div className="relative">
                 <Search
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/50"
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-black/60"
                   size={18}
                 />
                 <input
                   type="text"
                   placeholder="Buscar produtos, categorias..."
-                  className="w-full pl-12 pr-4 py-3 bg-muted/25 border border-border rounded-lg text-sm text-foreground placeholder:text-foreground/50 focus:outline-none focus:border-accent transition-colors"
+                  className="w-full pl-12 pr-4 py-3 bg-white border border-black/20 rounded-lg text-sm text-black placeholder:text-black/60 focus:outline-none focus:border-black transition-colors"
                 />
               </div>
             </div>
@@ -269,7 +269,7 @@ export function Header() {
               {/* Search mobile icon */}
               <button 
                 onClick={() => setMobileSearchOpen(true)}
-                className="md:hidden text-foreground hover:text-accent transition-colors"
+                className="md:hidden text-white hover:text-white/80 transition-colors"
               >
                 <Search size={20} />
               </button>
@@ -278,7 +278,7 @@ export function Header() {
               <div className="relative">
                 <button
                   onClick={() => setProfileMenuOpen(!profileMenuOpen)}
-                  className="text-foreground hover:text-accent transition-colors flex items-center gap-2"
+                  className="text-white hover:text-white/80 transition-colors flex items-center gap-2"
                 >
                   <User size={20} />
                   {isLoggedIn && firstName && (
@@ -398,7 +398,7 @@ export function Header() {
               {/* Cart icon */}
               <Link
                 href="/cart"
-                className="relative text-foreground hover:text-accent transition-colors"
+                className="relative text-white hover:text-white/80 transition-colors"
               >
                 <ShoppingBag
                   size={20}
@@ -417,7 +417,7 @@ export function Header() {
 
               {/* Mobile menu button */}
               <button
-                className="md:hidden text-foreground hover:text-accent transition-colors"
+                className="md:hidden text-white hover:text-white/80 transition-colors"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               >
                 <Menu size={20} />
@@ -431,13 +431,13 @@ export function Header() {
               {/* Mobile search */}
               <div className="relative mb-4">
                 <Search
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/50"
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-white/50"
                   size={18}
                 />
                 <input
                   type="text"
                   placeholder="Buscar produtos..."
-                  className="w-full pl-12 pr-4 py-3 bg-muted border border-border rounded-lg text-sm"
+                  className="w-full pl-12 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-sm text-white placeholder:text-white/50"
                 />
               </div>
 
@@ -462,7 +462,7 @@ export function Header() {
                   <Link
                     key={category.id}
                     href={`/products?category=${category.slug}`}
-                    className="block text-foreground hover:text-accent transition-colors text-sm font-medium"
+                    className="block text-white hover:text-white/80 transition-colors text-sm font-medium"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {category.name}
@@ -470,7 +470,7 @@ export function Header() {
                 ))}
 
               {!loadingCategories && categories.length === 0 && (
-                <p className="text-xs text-foreground/60">
+                <p className="text-xs text-white/60">
                   Nenhuma categoria encontrada.
                 </p>
               )}
