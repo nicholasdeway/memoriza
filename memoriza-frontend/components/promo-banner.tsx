@@ -8,7 +8,7 @@ export function PromoBanner() {
   const repeatCount = 6
 
   return (
-    <div className="bg-primary text-primary-foreground py-2 overflow-hidden">
+    <div className="bg-white text-black py-2 overflow-hidden">
       <div className="w-full">
         <div className="banner-track whitespace-nowrap">
           {/* Primeira faixa */}
