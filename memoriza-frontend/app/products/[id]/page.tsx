@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { Heart, Share2, Check } from "lucide-react"
+import { Check } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
@@ -12,6 +12,11 @@ import { Footer } from "@/components/footer"
 import { WhatsAppButton } from "@/components/whatsapp-button"
 import { useCart } from "@/lib/cart-context"
 import { useAuth } from "@/lib/auth-context"
+import { 
+  fetchInstallmentsFromAPI, 
+  getBestInstallmentDisplay,
+  type InstallmentsResponse 
+} from "@/lib/installment-calculator"
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
@@ -117,6 +122,9 @@ export default function ProductDetailPage({
   const [errors, setErrors] = useState<{ color?: string; size?: string }>({})
   const [isAdding, setIsAdding] = useState(false)
 
+  // Estado para parcelamento
+  const [installments, setInstallments] = useState<InstallmentsResponse | null>(null)
+
   useEffect(() => {
     const loadProduct = async () => {
       try {
@@ -214,6 +222,19 @@ export default function ProductDetailPage({
 
     void loadProduct()
   }, [id])
+
+  // Buscar parcelamento quando o produto carregar
+  useEffect(() => {
+    if (!product) return;
+
+    const fetchInstallments = async () => {
+      const finalPrice = product.precoPromocional ?? product.preco;
+      const installmentsData = await fetchInstallmentsFromAPI(finalPrice);
+      setInstallments(installmentsData);
+    };
+
+    void fetchInstallments();
+  }, [product]);
 
   if (loading) {
     return (
@@ -396,29 +417,11 @@ export default function ProductDetailPage({
                     {product.categoriaNome || "Categoria"}
                   </p>
                   <div className="flex items-center space-x-2 ml-auto">
-                    <button className="text-foreground hover:text-accent transition-colors">
-                      <Heart size={20} />
-                    </button>
-                    <button className="text-foreground hover:text-accent transition-colors">
-                      <Share2 size={20} />
-                    </button>
                   </div>
                 </div>
                 <h1 className="text-4xl font-light text-foreground mb-3">
                   {product.nome}
                 </h1>
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    {[...Array(5)].map((_, i) => (
-                      <span key={i} className="text-accent">
-                        ★
-                      </span>
-                    ))}
-                  </div>
-                  <span className="text-sm text-foreground/60">
-                    (156 avaliações)
-                  </span>
-                </div>
               </div>
 
               <div className="border-t border-b border-border py-6 space-y-4">
@@ -438,8 +441,18 @@ export default function ProductDetailPage({
                   )}
                 </div>
                 <p className="text-sm text-foreground/70">
-                  Frete grátis para compras acima de R$ 200
+                  Frete grátis para compras acima de R$ 200,00
                 </p>
+                
+                {/* Parcelamento */}
+                {installments && (() => {
+                  const installmentInfo = getBestInstallmentDisplay(installments);
+                  return (
+                    <p className="text-sm text-foreground/80 font-medium">
+                      {installmentInfo.text}
+                    </p>
+                  );
+                })()}
               </div>
 
               {/* Descrição */}

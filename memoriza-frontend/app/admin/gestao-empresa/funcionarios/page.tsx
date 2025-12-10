@@ -255,7 +255,15 @@ export default function FuncionariosPage() {
           console.error("Erro ao ler resposta de erro:", parseError)
         }
 
-        toast.error(errorMessage)
+        // Verifica se é erro de número duplicado e exibe mensagem específica
+        if (errorMessage.includes("Já existe uma conta cadastrada com este número")) {
+          toast.error("Este número de celular já está cadastrado em outra conta.", {
+            description: "Por favor, utilize um número diferente.",
+          })
+        } else {
+          toast.error(errorMessage)
+        }
+        
         return
       }
 

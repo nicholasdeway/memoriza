@@ -318,5 +318,5 @@
 .banner-track {
   display: inline-flex;
   width: max-content;
-  animation: banner-loop 25s linear infinite;
+  animation: banner-loop 60s linear infinite;
 }

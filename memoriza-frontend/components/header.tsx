@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import {
   ShoppingBag,
   User,
@@ -219,15 +220,15 @@ export function Header() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20 gap-4">
             {/* Logo */}
-            <Link href="/" className="flex items-center space-x-2 shrink-0">
-              <div className="w-8 h-8 bg-primary rounded-sm flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-lg">
-                  M
-                </span>
-              </div>
-              <span className="hidden sm:inline text-xl font-light tracking-tight text-foreground">
-                Memoriza
-              </span>
+            <Link href="/" className="flex items-center shrink-0">
+              <Image 
+                src="/logo-header.png" 
+                alt="Memoriza" 
+                width={450} 
+                height={120}
+                className="h-25 sm:h-28 lg:h-35 w-auto mt-2"
+                priority
+              />
             </Link>
 
             {/* Address Display (Desktop) */}

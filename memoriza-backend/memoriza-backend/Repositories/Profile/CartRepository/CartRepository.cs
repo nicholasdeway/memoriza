@@ -178,18 +178,24 @@ namespace memoriza_backend.Repositories.Profile
             public string Name { get; set; } = string.Empty;
             public string? ThumbnailUrl { get; set; }
             public decimal Price { get; set; }
+            public decimal? PromotionalPrice { get; set; }
         }
 
         private async Task<ProductRow?> GetProductInfoAsync(Guid productId)
         {
-            // Ajuste os nomes de coluna/tabela conforme seu banco real
+            // Busca produto E sua imagem primária
             const string sql = @"
                 SELECT 
-                    id,
-                    name,
-                    price
-                FROM products
-                WHERE id = @Id
+                    p.id,
+                    p.name,
+                    p.price,
+                    p.promotional_price AS ""PromotionalPrice"",
+                    pi.url AS ""ThumbnailUrl""
+                FROM products p
+                LEFT JOIN product_images pi 
+                    ON p.id = pi.product_id 
+                    AND pi.is_primary = TRUE
+                WHERE p.id = @Id
                 LIMIT 1;
             ";
 
@@ -253,16 +259,19 @@ namespace memoriza_backend.Repositories.Profile
                 throw new ApplicationException("Produto não encontrado.");
             }
 
+            // Usa preço promocional se disponível, senão usa preço normal
+            var finalPrice = product.PromotionalPrice ?? product.Price;
+
             var item = new CartItem
             {
                 Id = Guid.NewGuid(),
                 CartId = cart.Id,
                 ProductId = product.Id,
                 ProductName = product.Name,
-                ThumbnailUrl = product.ThumbnailUrl, // vai ser null por enquanto
+                ThumbnailUrl = product.ThumbnailUrl, // Imagem primária do produto
                 Quantity = request.Quantity,
-                UnitPrice = product.Price,
-                Subtotal = product.Price * request.Quantity
+                UnitPrice = finalPrice,
+                Subtotal = finalPrice * request.Quantity
             };
 
             await AddItemAsync(item);
