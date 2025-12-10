@@ -170,6 +170,10 @@ builder.Services.AddScoped<IEmployeeAccessLogService, EmployeeAccessLogService>(
 builder.Services.AddScoped<IMercadoPagoService, MercadoPagoService>();
 builder.Services.Configure<MercadoPagoSettings>(builder.Configuration.GetSection("MercadoPago"));
 
+// Installments Service with HttpClient
+builder.Services.AddHttpClient<IMercadoPagoInstallmentsService, MercadoPagoInstallmentsService>();
+builder.Services.AddMemoryCache();
+
 // --- Validations ---
 builder.Services.AddValidatorsFromAssemblyContaining<CreateOrderFromCartRequestValidator>();
 builder.Services.AddFluentValidationAutoValidation();

@@ -9,8 +9,8 @@ import {
   Trash2,
   X,
   Upload,
-  ChevronLeft,
-  ChevronRight,
+  Eye,
+  ChevronDown,
   LayoutGrid,
   List,
   GripVertical,
@@ -38,6 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
+import { AdminPagination } from "@/components/admin-pagination"
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
@@ -120,12 +121,12 @@ interface ModalImage {
 const formatCurrencyBRL = (value: string): string => {
   // Remove tudo que não é número
   const numbers = value.replace(/\D/g, "")
-  
+
   if (!numbers) return ""
-  
+
   // Converte para número e divide por 100 para ter os centavos
   const amount = parseFloat(numbers) / 100
-  
+
   // Formata no padrão brasileiro
   return amount.toLocaleString("pt-BR", {
     minimumFractionDigits: 2,
@@ -136,12 +137,12 @@ const formatCurrencyBRL = (value: string): string => {
 const parseCurrencyBRL = (formatted: string): string => {
   // Remove tudo que não é número
   const numbers = formatted.replace(/\D/g, "")
-  
+
   if (!numbers) return ""
-  
+
   // Converte para número e divide por 100
   const amount = parseFloat(numbers) / 100
-  
+
   // Retorna como string com ponto decimal para o backend
   return amount.toFixed(2)
 }
@@ -331,17 +332,25 @@ export default function AdminProdutos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading])
 
+  /* Paginação */
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+
   // ===== Filtros (memoizados) =====
   const filteredProducts = useMemo(
-    () =>
-      products.filter((p) => {
+    () => {
+      const filtered = products.filter((p) => {
         const matchSearch = p.nome
           .toLowerCase()
           .includes(searchTerm.toLowerCase())
         const matchCategoria =
           !filterCategoria || p.categoriaId === filterCategoria
         return matchSearch && matchCategoria
-      }),
+      })
+      // Reset page on filter change
+      setCurrentPage(1)
+      return filtered
+    },
     [products, searchTerm, filterCategoria],
   )
 
@@ -368,7 +377,7 @@ export default function AdminProdutos() {
       toast.error('Você não tem permissão para criar produtos');
       return;
     }
-    
+
     setEditingProduct(null)
     setFormData({
       nome: "",
@@ -390,7 +399,7 @@ export default function AdminProdutos() {
       toast.error('Você não tem permissão para editar produtos');
       return;
     }
-    
+
     setEditingProduct(product)
     setFormData({
       nome: product.nome,
@@ -503,7 +512,7 @@ export default function AdminProdutos() {
       toast.error('Você não tem permissão para criar produtos');
       return;
     }
-    
+
     try {
       // Helper para converter e arredondar corretamente
       const parsePrice = (value: string): number => {
@@ -643,7 +652,7 @@ export default function AdminProdutos() {
       toast.error('Você não tem permissão para deletar produtos');
       return;
     }
-    
+
     const target = products.find((p) => p.id === id)
     if (!target) return
 
@@ -833,6 +842,12 @@ export default function AdminProdutos() {
     }
   }
 
+  const totalPages = Math.ceil(sortedProducts.length / itemsPerPage)
+  const paginatedProducts = sortedProducts.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
+
   // ===== Render =====
   return (
     <div className="p-8">
@@ -966,7 +981,8 @@ export default function AdminProdutos() {
         </div>
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {sortedProducts.map((product) => {
+          {paginatedProducts.map((product) => {
+
             const categoriaNome =
               categories.find((c) => c.id === product.categoriaId)?.nome ?? "-"
             const mainImage =
@@ -1077,9 +1093,10 @@ export default function AdminProdutos() {
                       <input
                         type="checkbox"
                         checked={
-                          sortedProducts.length > 0 &&
-                          selectedIds.size === sortedProducts.length
+                          paginatedProducts.length > 0 &&
+                          paginatedProducts.every((p) => selectedIds.has(p.id))
                         }
+
                         onChange={toggleSelectAll}
                         className="w-4 h-4 rounded border-border text-primary focus:ring-primary accent-primary"
                       />
@@ -1106,7 +1123,8 @@ export default function AdminProdutos() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {sortedProducts.map((product) => {
+                {paginatedProducts.map((product) => {
+
                   const categoriaNome =
                     categories.find((c) => c.id === product.categoriaId)
                       ?.nome ?? "-"
@@ -1225,27 +1243,17 @@ export default function AdminProdutos() {
             </table>
           </div>
 
-          {/* Pagination (mock visual) */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-border">
-            <p className="text-sm text-foreground/60">
-              Mostrando {filteredProducts.length} de {products.length} produtos
-            </p>
-            <div className="flex items-center gap-2">
-              <button className="p-2 border border-border rounded-lg hover:bg-muted transition-colors">
-                <ChevronLeft size={16} />
-              </button>
-              <button className="px-3 py-1 bg-primary text-primary-foreground rounded-lg text-sm">
-                1
-              </button>
-              <button className="px-3 py-1 hover:bg-muted rounded-lg text-sm">
-                2
-              </button>
-              <button className="p-2 border border-border rounded-lg hover:bg-muted transition-colors">
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
+          {/* Pagination */}
+          <AdminPagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            totalItems={sortedProducts.length}
+            itemsPerPage={itemsPerPage}
+            itemLabel="produtos"
+          />
         </div>
+
       )}
 
       {/* Modal */}

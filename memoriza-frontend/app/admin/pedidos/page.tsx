@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { Search, Eye, X, ChevronDown, Truck } from "lucide-react"
+import { AdminPagination } from "@/components/admin-pagination"
+
 import {
   type OrderStatus,
   orderStatusLabels,
@@ -201,6 +203,10 @@ export default function AdminPedidos() {
     trackingUrl: "",
   })
 
+  // Paginação
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+
   // ===========================
   // Fetch listagem de pedidos
   // ===========================
@@ -320,6 +326,14 @@ export default function AdminPedidos() {
 
     return matchSearch && matchStatus
   })
+
+  // Cálculo de paginação
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const paginatedOrders = filteredOrders.slice(
+    startIndex,
+    startIndex + itemsPerPage,
+  )
 
   // ===========================
   // Atualizar status (PUT /status)
@@ -535,15 +549,19 @@ export default function AdminPedidos() {
             type="text"
             placeholder="Buscar por ID ou cliente..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value)
+              setCurrentPage(1) // Reset para primeira página ao buscar
+            }}
             className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <select
           value={filterStatus}
-          onChange={(e) =>
+          onChange={(e) => {
             setFilterStatus(e.target.value as OrderStatus | "")
-          }
+            setCurrentPage(1) // Reset para primeira página ao filtrar
+          }}
           className="px-4 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-accent"
         >
           <option value="">Todos os status</option>
@@ -608,7 +626,7 @@ export default function AdminPedidos() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredOrders.length === 0 ? (
+              {paginatedOrders.length === 0 ? (
                 <tr>
                   <td
                     colSpan={6}
@@ -618,7 +636,7 @@ export default function AdminPedidos() {
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((order) => {
+                paginatedOrders.map((order) => {
                   // 👉 Só mostra valor real se estiver aprovado
                   const displayTotal =
                     order.status === "aprovado"
@@ -741,6 +759,16 @@ export default function AdminPedidos() {
             </tbody>
           </table>
         </div>
+
+        {/* Paginação */}
+        <AdminPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={filteredOrders.length}
+          itemsPerPage={itemsPerPage}
+          itemLabel="pedidos"
+        />
       </div>
 
       {/* Modal Detalhes do Pedido */}

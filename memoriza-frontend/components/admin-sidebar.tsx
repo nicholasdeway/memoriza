@@ -247,7 +247,7 @@ export function AdminSidebar() {
         ref={sidebarRef}
         className={`
           fixed lg:relative z-50
-          bg-primary text-primary-foreground min-h-screen flex flex-col
+          bg-primary text-primary-foreground h-full flex flex-col
           transform-gpu transition-transform duration-300 ease-out
           ${
             expanded
@@ -262,7 +262,7 @@ export function AdminSidebar() {
         }}
       >
         {/* Header */}
-        <div className="relative p-6 border-b border-primary-foreground/10 min-h-[120px] flex flex-col justify-center">
+        <div className="relative p-6 pt-safe border-b border-primary-foreground/10 flex flex-col justify-center flex-shrink-0" style={{ minHeight: '120px', paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
           {/* Botão expandir/recolher */}
           <button
             onClick={handleToggle}
@@ -316,7 +316,7 @@ export function AdminSidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 p-4 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-primary-foreground/10 hover:[&::-webkit-scrollbar-thumb]:bg-primary-foreground/30 [&::-webkit-scrollbar-thumb]:rounded-full">
           {menuSections.map((section, sectionIdx) => (
             <div key={section.title} className={sectionIdx > 0 ? "mt-6" : ""}>
               {/* Linha separadora quando está colapsado e não é a primeira seção */}
@@ -395,7 +395,7 @@ export function AdminSidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-primary-foreground/10">
+        <div className="p-4 border-t border-primary-foreground/10 flex-shrink-0">
           {/* User Info */}
           {user && (
             <div

@@ -5,7 +5,7 @@ import type React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { User, MapPin, Package, ArrowLeft } from "lucide-react";
+import { User, MapPin, Package, ArrowLeft, ShoppingCart } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -14,6 +14,7 @@ const menuItems = [
   { href: "/minha-conta/perfil", label: "Meu Perfil", icon: User },
   { href: "/minha-conta/enderecos", label: "Endereços", icon: MapPin },
   { href: "/minha-conta/pedidos", label: "Meus Pedidos", icon: Package },
+  { href: "/cart", label: "Meu Carrinho", icon: ShoppingCart },
 ];
 
 export default function MinhaContaLayout({

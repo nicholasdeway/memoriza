@@ -59,6 +59,12 @@ namespace memoriza_backend.Services.Admin.Employees
             if (existingUser is not null)
                 throw new ApplicationException("Já existe um usuário registrado com esse e-mail.");
 
+            // Telefone único (na tabela users)
+            var digitsPhone = Regex.Replace(dto.Phone, @"\D", "");
+            var existingPhone = await _userRepository.GetByPhoneAsync(digitsPhone);
+            if (existingPhone is not null)
+                throw new ApplicationException("Já existe uma conta cadastrada com este número de celular.");
+
             // CPF (se preenchido) – único na tabela employees
             if (!string.IsNullOrWhiteSpace(dto.Cpf))
             {
@@ -70,8 +76,6 @@ namespace memoriza_backend.Services.Admin.Employees
             // ===== Normalização =====
             var firstName = NameFormatter.NormalizeName(dto.Name);
             var lastName = NameFormatter.NormalizeName(dto.LastName);
-
-            var digitsPhone = Regex.Replace(dto.Phone, @"\D", "");
             var emailLower = dto.Email.Trim().ToLowerInvariant();
 
             var hashedPassword = BCrypt.Net.BCrypt.HashPassword(dto.Password);
@@ -136,6 +140,12 @@ namespace memoriza_backend.Services.Admin.Employees
             var userByEmail = await _userRepository.GetByEmailAsync(dto.Email);
             if (userByEmail is not null && userByEmail.Id != existing.UserId)
                 throw new ApplicationException("Já existe outro usuário registrado com esse e-mail.");
+
+            // Telefone único (pode ser o mesmo do próprio funcionário)
+            var digitsPhone = Regex.Replace(dto.Phone, @"\D", "");
+            var userByPhone = await _userRepository.GetByPhoneAsync(digitsPhone);
+            if (userByPhone is not null && userByPhone.Id != existing.UserId)
+                throw new ApplicationException("Já existe uma conta cadastrada com este número de celular.");
 
             // CPF (se preenchido) – único (pode ser o mesmo this employee)
             if (!string.IsNullOrWhiteSpace(dto.Cpf))

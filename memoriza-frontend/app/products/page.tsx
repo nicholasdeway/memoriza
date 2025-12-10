@@ -15,6 +15,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { 
+  fetchInstallmentsFromAPI, 
+  getBestInstallmentDisplay,
+  type InstallmentsResponse 
+} from "@/lib/installment-calculator";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105";
@@ -158,6 +163,11 @@ export default function ProductsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 24;
 
+  // Estado para armazenar parcelamento de cada produto
+  const [productInstallments, setProductInstallments] = useState<
+    Record<string, InstallmentsResponse>
+  >({});
+
   // ===== Ler category da URL no client (sem useSearchParams) =====
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -270,6 +280,32 @@ export default function ProductsPage() {
       setSelectedCategoryId(matchedCategory.id);
     }
   }, [categorySlugFromUrl, categories]);
+
+  // Buscar parcelamento para todos os produtos
+  useEffect(() => {
+    if (products.length === 0) return;
+
+    const fetchAllInstallments = async () => {
+      const installmentsMap: Record<string, InstallmentsResponse> = {};
+
+      // Busca parcelamento para cada produto
+      await Promise.all(
+        products.map(async (product) => {
+          const finalPrice =
+            product.promotionalPrice && product.promotionalPrice > 0
+              ? product.promotionalPrice
+              : product.price;
+
+          const installments = await fetchInstallmentsFromAPI(finalPrice);
+          installmentsMap[product.id] = installments;
+        }),
+      );
+
+      setProductInstallments(installmentsMap);
+    };
+
+    void fetchAllInstallments();
+  }, [products]);
 
   // Contagens por tamanho/cor (com base nos produtos reais)
   const sizeCounts = useMemo(() => {
@@ -1019,11 +1055,11 @@ export default function ProductsPage() {
                             <div className="mt-3 space-y-1">
                               {hasDiscount ? (
                                 <>
-                                  <p className="text-sm font-semibold text-foreground">
-                                    {formatCurrency(finalPrice)}
-                                  </p>
                                   <p className="text-xs text-foreground/50 line-through">
                                     {formatCurrency(basePrice)}
+                                  </p>
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {formatCurrency(finalPrice)}
                                   </p>
                                 </>
                               ) : (
@@ -1031,6 +1067,19 @@ export default function ProductsPage() {
                                   {formatCurrency(basePrice)}
                                 </p>
                               )}
+                              
+                              {/* Parcelamento */}
+                              {(() => {
+                                const installmentsData = productInstallments[product.id];
+                                if (!installmentsData) return null;
+                                
+                                const installmentInfo = getBestInstallmentDisplay(installmentsData);
+                                return (
+                                  <p className="text-xs text-foreground/60">
+                                    {installmentInfo.text}
+                                  </p>
+                                );
+                              })()}
                             </div>
                           </Link>
 

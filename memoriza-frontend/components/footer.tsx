@@ -1,5 +1,6 @@
 import Link from "next/link"
-import { Mail, Phone, MapPin } from "lucide-react"
+import Image from "next/image"
+import { Instagram, Phone, MapPin } from "lucide-react"
 
 export function Footer() {
   return (
@@ -8,9 +9,16 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           {/* Brand */}
           <div>
-            <h3 className="text-lg font-light mb-4 tracking-tight">Memoriza</h3>
+            <Image 
+              src="/logo-footer.png" 
+              alt="Memoriza" 
+              width={450} 
+              height={120}
+              className="h-22 sm:h-28 lg:h-35 w-auto mt-2 mb-4"
+              priority
+            />
             <p className="text-primary-foreground/70 text-sm leading-relaxed">
-              Produtos personalizados com design premium e qualidade excepcional.
+              Papelaria personalizada • Presentes • Brindes • Mimos
             </p>
           </div>
 
@@ -73,12 +81,19 @@ export function Footer() {
             <h4 className="font-medium mb-4 text-sm">Contato</h4>
             <ul className="space-y-3 text-sm">
               <li className="flex items-start space-x-2">
-                <Mail size={16} className="mt-0.5 flex-shrink-0" />
-                <span>contato@memoriza.com</span>
+                <Instagram size={16} className="mt-0.5 flex-shrink-0" />
+                <a 
+                  href="https://www.instagram.com/memorizzado/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="hover:text-primary-foreground/80 transition-colors"
+                >
+                  @memorizzado
+                </a>
               </li>
               <li className="flex items-start space-x-2">
                 <Phone size={16} className="mt-0.5 flex-shrink-0" />
-                <span>+55 (34) 3000-0000</span>
+                <span>+55 (34) 99734-7900</span>
               </li>
               <li className="flex items-start space-x-2">
                 <MapPin size={16} className="mt-0.5 flex-shrink-0" />
