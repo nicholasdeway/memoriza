@@ -259,8 +259,30 @@ namespace memoriza_backend.Repositories.Profile
                 throw new ApplicationException("Produto não encontrado.");
             }
 
-            // Usa preço promocional se disponível, senão usa preço normal
-            var finalPrice = product.PromotionalPrice ?? product.Price;
+            // NOVO: Buscar preço específico do tamanho se fornecido
+            decimal finalPrice = product.PromotionalPrice ?? product.Price;
+            
+            if (request.SizeId.HasValue)
+            {
+                const string sqlSizePrice = @"
+                    SELECT price, promotional_price
+                    FROM product_sizes
+                    WHERE product_id = @ProductId AND size_id = @SizeId
+                    LIMIT 1;
+                ";
+                
+                await using var conn = new NpgsqlConnection(_connectionString);
+                var sizePrice = await conn.QueryFirstOrDefaultAsync<(decimal? Price, decimal? PromotionalPrice)>(
+                    sqlSizePrice, 
+                    new { ProductId = request.ProductId, SizeId = request.SizeId }
+                );
+                
+                // Se o tamanho tiver preço específico, usa ele
+                if (sizePrice.Price.HasValue || sizePrice.PromotionalPrice.HasValue)
+                {
+                    finalPrice = sizePrice.PromotionalPrice ?? sizePrice.Price ?? product.Price;
+                }
+            }
 
             var item = new CartItem
             {

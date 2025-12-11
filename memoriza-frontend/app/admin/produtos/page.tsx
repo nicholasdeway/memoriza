@@ -51,7 +51,7 @@ const VIEW_MODE_KEY = "adminProdutosViewMode"
 type Status = "ativo" | "inativo"
 
 interface CategoryOption {
-  id: string // Guid em string
+  id: string
   nome: string
   ativo: boolean
 }
@@ -79,6 +79,13 @@ interface ProductImageDto {
   createdAt: string
 }
 
+interface ProductSizeDto {
+  sizeId: number
+  sizeName: string
+  price: number | null
+  promotionalPrice: number | null
+}
+
 interface ProductResponseDto {
   id: string
   categoryId: string
@@ -88,6 +95,7 @@ interface ProductResponseDto {
   promotionalPrice?: number | null
   sizeIds: number[]
   colorIds: number[]
+  sizes: ProductSizeDto[]
   isPersonalizable: boolean
   isActive: boolean
   createdAt: string
@@ -186,9 +194,9 @@ export default function AdminProdutos() {
     descricao: "",
     status: "ativo" as Status,
     personalizavel: false,
+    sizePrices: {} as Record<number, { price: string; promotionalPrice: string }>,
   })
 
-  // Estado unificado de imagens para o modal
   const [modalImages, setModalImages] = useState<ModalImage[]>([])
 
   // Estados para controlar AlertDialogs
@@ -389,31 +397,90 @@ export default function AdminProdutos() {
       descricao: "",
       status: "ativo",
       personalizavel: false,
+      sizePrices: {},
     })
     setModalImages([])
     setShowModal(true)
   }
 
-  const openEditModal = (product: Product) => {
+  const openEditModal = async (product: Product) => {
     if (!canEdit) {
       toast.error('Você não tem permissão para editar produtos');
       return;
     }
 
     setEditingProduct(product)
-    setFormData({
-      nome: product.nome,
-      preco: formatCurrencyBRL((product.preco * 100).toString()),
-      precoPromocional: product.precoPromocional
-        ? formatCurrencyBRL((product.precoPromocional * 100).toString())
-        : "",
-      categoriaId: product.categoriaId,
-      tamanhos: product.tamanhos ?? [],
-      cores: product.cores ?? [],
-      descricao: product.descricao,
-      status: product.status,
-      personalizavel: product.personalizavel ?? false,
-    })
+    
+    // Buscar detalhes completos do produto para pegar os preços dos tamanhos
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products/${product.id}`, {
+        headers: buildAuthHeaders(),
+      })
+      
+      if (res.ok) {
+        const fullProduct: ProductResponseDto = await res.json()
+        
+        // Montar sizePrices a partir dos dados do backend
+        const sizePricesMap: Record<number, { price: string; promotionalPrice: string }> = {}
+        
+        fullProduct.sizes?.forEach((s) => {
+          sizePricesMap[s.sizeId] = {
+            price: s.price !== null ? formatCurrencyBRL((s.price * 100).toString()) : "",
+            promotionalPrice: s.promotionalPrice !== null 
+              ? formatCurrencyBRL((s.promotionalPrice * 100).toString()) 
+              : "",
+          }
+        })
+        
+        setFormData({
+          nome: product.nome,
+          preco: formatCurrencyBRL((product.preco * 100).toString()),
+          precoPromocional: product.precoPromocional
+            ? formatCurrencyBRL((product.precoPromocional * 100).toString())
+            : "",
+          categoriaId: product.categoriaId,
+          tamanhos: product.tamanhos ?? [],
+          cores: product.cores ?? [],
+          descricao: product.descricao,
+          status: product.status,
+          personalizavel: product.personalizavel ?? false,
+          sizePrices: sizePricesMap,
+        })
+      } else {
+        // Fallback: usar dados básicos se falhar
+        setFormData({
+          nome: product.nome,
+          preco: formatCurrencyBRL((product.preco * 100).toString()),
+          precoPromocional: product.precoPromocional
+            ? formatCurrencyBRL((product.precoPromocional * 100).toString())
+            : "",
+          categoriaId: product.categoriaId,
+          tamanhos: product.tamanhos ?? [],
+          cores: product.cores ?? [],
+          descricao: product.descricao,
+          status: product.status,
+          personalizavel: product.personalizavel ?? false,
+          sizePrices: {},
+        })
+      }
+    } catch (error) {
+      console.error("Erro ao buscar detalhes do produto:", error)
+      // Fallback em caso de erro
+      setFormData({
+        nome: product.nome,
+        preco: formatCurrencyBRL((product.preco * 100).toString()),
+        precoPromocional: product.precoPromocional
+          ? formatCurrencyBRL((product.precoPromocional * 100).toString())
+          : "",
+        categoriaId: product.categoriaId,
+        tamanhos: product.tamanhos ?? [],
+        cores: product.cores ?? [],
+        descricao: product.descricao,
+        status: product.status,
+        personalizavel: product.personalizavel ?? false,
+        sizePrices: {},
+      })
+    }
 
     // Carrega imagens existentes (ordem já vem organizada pelo loadData)
     setModalImages(
@@ -521,6 +588,24 @@ export default function AdminProdutos() {
         return Math.round(parsed * 100) / 100
       }
 
+      const sizePrices = formData.tamanhos
+        .map((sizeId) => {
+          const sp = formData.sizePrices[sizeId]
+          if (!sp) return null
+          
+          // Só incluir se tiver pelo menos um preço definido
+          if (!sp.price && !sp.promotionalPrice) return null
+          
+          return {
+            sizeId,
+            price: sp.price ? parsePrice(parseCurrencyBRL(sp.price)) : null,
+            promotionalPrice: sp.promotionalPrice 
+              ? parsePrice(parseCurrencyBRL(sp.promotionalPrice)) 
+              : null,
+          }
+        })
+        .filter((sp) => sp !== null)
+
       const payload = {
         categoryId: formData.categoriaId,
         name: formData.nome,
@@ -531,6 +616,7 @@ export default function AdminProdutos() {
           : null,
         sizeIds: formData.tamanhos,
         colorIds: formData.cores,
+        sizePrices: sizePrices.length > 0 ? sizePrices : undefined,
         isPersonalizable: formData.personalizavel,
         isActive: formData.status === "ativo",
       }
@@ -1049,15 +1135,24 @@ export default function AdminProdutos() {
                       {product.precoPromocional ? (
                         <div className="flex flex-col">
                           <span className="text-xs text-foreground/50 line-through">
-                            R$ {product.preco.toFixed(2)}
+                            R$ {product.preco.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
                           </span>
                           <span className="font-bold text-accent">
-                            R$ {product.precoPromocional.toFixed(2)}
+                            R$ {product.precoPromocional.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
                           </span>
                         </div>
                       ) : (
                         <span className="font-bold text-foreground">
-                          R$ {product.preco.toFixed(2)}
+                          R$ {product.preco.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
                         </span>
                       )}
                     </div>
@@ -1527,6 +1622,99 @@ export default function AdminProdutos() {
                     ))}
                 </div>
               </div>
+
+              {/* Preços por Tamanho */}
+              {formData.tamanhos.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Preços por Tamanho
+                    <span className="text-xs font-normal text-foreground/60 ml-2">
+                      (Opcional - deixe vazio para usar o preço base)
+                    </span>
+                  </label>
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-muted">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-sm font-medium text-foreground">
+                            Tamanho
+                          </th>
+                          <th className="px-4 py-2 text-left text-sm font-medium text-foreground">
+                            Preço (R$)
+                          </th>
+                          <th className="px-4 py-2 text-left text-sm font-medium text-foreground">
+                            Preço Promocional
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {formData.tamanhos.map((sizeId) => {
+                          const size = sizes.find((s) => s.id === sizeId)
+                          if (!size) return null
+
+                          const sizePrice = formData.sizePrices[sizeId] || {
+                            price: "",
+                            promotionalPrice: "",
+                          }
+
+                          return (
+                            <tr key={sizeId} className="bg-background">
+                              <td className="px-4 py-3 text-sm font-medium text-foreground">
+                                {size.nome}
+                              </td>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="text"
+                                  value={sizePrice.price}
+                                  onChange={(e) => {
+                                    const formatted = formatCurrencyBRL(e.target.value)
+                                    setFormData({
+                                      ...formData,
+                                      sizePrices: {
+                                        ...formData.sizePrices,
+                                        [sizeId]: {
+                                          ...sizePrice,
+                                          price: formatted,
+                                        },
+                                      },
+                                    })
+                                  }}
+                                  className="w-full px-3 py-1.5 border border-border rounded bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                  placeholder="0,00"
+                                />
+                              </td>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="text"
+                                  value={sizePrice.promotionalPrice}
+                                  onChange={(e) => {
+                                    const formatted = formatCurrencyBRL(e.target.value)
+                                    setFormData({
+                                      ...formData,
+                                      sizePrices: {
+                                        ...formData.sizePrices,
+                                        [sizeId]: {
+                                          ...sizePrice,
+                                          promotionalPrice: formatted,
+                                        },
+                                      },
+                                    })
+                                  }}
+                                  className="w-full px-3 py-1.5 border border-border rounded bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                                  placeholder="0,00"
+                                />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-foreground/60 mt-2">
+                    💡 Dica: Se deixar vazio, o sistema usará o preço base do produto para este tamanho.
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center gap-2 pt-4">
                 <input

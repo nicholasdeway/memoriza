@@ -1058,13 +1058,13 @@ export default function ProductsPage() {
                                   <p className="text-xs text-foreground/50 line-through">
                                     {formatCurrency(basePrice)}
                                   </p>
-                                  <p className="text-sm font-semibold text-foreground">
-                                    {formatCurrency(finalPrice)}
+                                  <p className="text-lg font-bold text-accent">
+                                    {formatCurrency(finalPrice)} <span className="text-xs font-normal text-foreground/60">à vista no PIX</span>
                                   </p>
                                 </>
                               ) : (
-                                <p className="font-medium text-foreground">
-                                  {formatCurrency(basePrice)}
+                                <p className="text-lg font-bold text-accent">
+                                  {formatCurrency(basePrice)} <span className="text-xs font-normal text-foreground/60">à vista no PIX</span>
                                 </p>
                               )}
                               

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace memoriza_backend.Models.DTO.Admin.Product
@@ -13,6 +13,10 @@ namespace memoriza_backend.Models.DTO.Admin.Product
         public decimal? PromotionalPrice { get; set; }
         public List<int> SizeIds { get; set; } = new();
         public List<int> ColorIds { get; set; } = new();
+        
+        // Opcional: preços específicos por tamanho
+        public List<UpdateProductSizePriceDto>? SizePrices { get; set; }
+        
         public bool IsPersonalizable { get; set; } = false;
         public bool IsActive { get; set; } = true;
     }
@@ -30,6 +34,8 @@ namespace memoriza_backend.Models.DTO.Admin.Product
         public List<int> SizeIds { get; set; } = new();
         public List<int> ColorIds { get; set; } = new();
 
+        // Opcional: preços específicos por tamanho
+        public List<UpdateProductSizePriceDto>? SizePrices { get; set; }
 
         public bool IsPersonalizable { get; set; } = false;
         public bool IsActive { get; set; } = true;
@@ -49,6 +55,8 @@ namespace memoriza_backend.Models.DTO.Admin.Product
         public List<int> SizeIds { get; set; } = new();
         public List<int> ColorIds { get; set; } = new();
 
+        // Nova propriedade: tamanhos com preços específicos
+        public List<ProductSizeDto> Sizes { get; set; } = new();
 
         public bool IsPersonalizable { get; set; }
         public bool IsActive { get; set; }

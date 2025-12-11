@@ -264,6 +264,8 @@ namespace memoriza_backend.Repositories.Admin.Products
         {
             public Guid ProductId { get; set; }
             public int SizeId { get; set; }
+            public decimal? Price { get; set; }
+            public decimal? PromotionalPrice { get; set; }
         }
 
         public async Task<IReadOnlyList<int>> GetSizeIdsByProductIdAsync(Guid productId)
@@ -279,6 +281,25 @@ namespace memoriza_backend.Repositories.Admin.Products
 
             var ids = await conn.QueryAsync<int>(sql, new { ProductId = productId });
             return ids.AsList();
+        }
+        
+        // NOVO: Buscar tamanhos com preços
+        public async Task<IReadOnlyList<(int SizeId, decimal? Price, decimal? PromotionalPrice)>> GetSizesWithPricesByProductIdAsync(Guid productId)
+        {
+            const string sql = @"
+                SELECT 
+                    size_id             AS ""SizeId"",
+                    price               AS ""Price"",
+                    promotional_price   AS ""PromotionalPrice""
+                FROM product_sizes
+                WHERE product_id = @ProductId;
+            ";
+
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
+
+            var rows = await conn.QueryAsync<ProductSizeRow>(sql, new { ProductId = productId });
+            return rows.Select(r => (r.SizeId, r.Price, r.PromotionalPrice)).ToList();
         }
 
         public async Task<IDictionary<Guid, IReadOnlyList<int>>> GetSizeIdsByProductIdsAsync(IEnumerable<Guid> productIds)
@@ -330,6 +351,39 @@ namespace memoriza_backend.Repositories.Admin.Products
             {
                 var param = ids.Select(sizeId => new { ProductId = productId, SizeId = sizeId });
                 await conn.ExecuteAsync(insertSql, param, tx);
+            }
+
+            await tx.CommitAsync();
+        }
+        
+        // NOVO: Atualizar preços dos tamanhos
+        public async Task UpdateSizePricesAsync(
+            Guid productId, 
+            IEnumerable<(int SizeId, decimal? Price, decimal? PromotionalPrice)> sizePrices)
+        {
+            var prices = sizePrices?.ToArray() ?? Array.Empty<(int, decimal?, decimal?)>();
+            if (prices.Length == 0) return;
+
+            const string updateSql = @"
+                UPDATE product_sizes
+                SET price = @Price,
+                    promotional_price = @PromotionalPrice
+                WHERE product_id = @ProductId AND size_id = @SizeId;
+            ";
+
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+
+            foreach (var (sizeId, price, promoPrice) in prices)
+            {
+                await conn.ExecuteAsync(updateSql, new
+                {
+                    ProductId = productId,
+                    SizeId = sizeId,
+                    Price = (object?)price ?? DBNull.Value,
+                    PromotionalPrice = (object?)promoPrice ?? DBNull.Value
+                }, tx);
             }
 
             await tx.CommitAsync();

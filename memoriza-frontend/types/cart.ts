@@ -20,6 +20,9 @@ export interface CartSummaryResponse {
 export interface AddCartItemRequest {
     productId: string
     quantity: number
+    sizeId?: number
+    colorId?: number
+    personalizationText?: string
 }
 
 export interface UpdateCartItemQuantityRequest {
