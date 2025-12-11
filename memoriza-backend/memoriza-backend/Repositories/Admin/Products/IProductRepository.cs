@@ -19,6 +19,12 @@ namespace memoriza_backend.Repositories.Admin.Products
         Task<IReadOnlyList<int>> GetSizeIdsByProductIdAsync(Guid productId);
         Task<IDictionary<Guid, IReadOnlyList<int>>> GetSizeIdsByProductIdsAsync(IEnumerable<Guid> productIds);
         Task ReplaceProductSizesAsync(Guid productId, IEnumerable<int> sizeIds);
+        
+        // NOVO: Buscar tamanhos com preços
+        Task<IReadOnlyList<(int SizeId, decimal? Price, decimal? PromotionalPrice)>> GetSizesWithPricesByProductIdAsync(Guid productId);
+        
+        // NOVO: Atualizar preços dos tamanhos
+        Task UpdateSizePricesAsync(Guid productId, IEnumerable<(int SizeId, decimal? Price, decimal? PromotionalPrice)> sizePrices);
 
         // Cores
         Task<IReadOnlyList<int>> GetColorIdsByProductIdAsync(Guid productId);

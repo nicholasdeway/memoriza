@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using memoriza_backend.Models.Admin;
 using memoriza_backend.Models.DTO.Admin.Product;
 using memoriza_backend.Repositories.Admin.Products;
+using memoriza_backend.Repositories.Admin.Sizes;
 
 namespace memoriza_backend.Services.Admin.Products
 {
@@ -12,13 +13,16 @@ namespace memoriza_backend.Services.Admin.Products
     {
         private readonly IProductRepository _productRepository;
         private readonly IProductImageRepository _imageRepository;
+        private readonly ISizeRepository _sizeRepository;
 
         public ProductService(
             IProductRepository productRepository,
-            IProductImageRepository imageRepository)
+            IProductImageRepository imageRepository,
+            ISizeRepository sizeRepository)
         {
             _productRepository = productRepository;
             _imageRepository = imageRepository;
+            _sizeRepository = sizeRepository;
         }
 
         // ================== HELPERS ==================
@@ -27,7 +31,8 @@ namespace memoriza_backend.Services.Admin.Products
             Product product,
             IReadOnlyList<ProductImage>? images = null,
             IReadOnlyList<int>? sizeIds = null,
-            IReadOnlyList<int>? colorIds = null)
+            IReadOnlyList<int>? colorIds = null,
+            IReadOnlyList<(int SizeId, string SizeName, decimal? Price, decimal? PromotionalPrice)>? sizesWithPrices = null)
         {
             return new ProductResponseDto
             {
@@ -39,6 +44,18 @@ namespace memoriza_backend.Services.Admin.Products
                 PromotionalPrice = product.PromotionalPrice,
                 SizeIds = (sizeIds ?? Array.Empty<int>()).ToList(),
                 ColorIds = (colorIds ?? Array.Empty<int>()).ToList(),
+                
+                // NOVO: Tamanhos com preços
+                Sizes = (sizesWithPrices ?? Array.Empty<(int, string, decimal?, decimal?)>())
+                    .Select(s => new ProductSizeDto
+                    {
+                        SizeId = s.SizeId,
+                        SizeName = s.SizeName,
+                        Price = s.Price,
+                        PromotionalPrice = s.PromotionalPrice
+                    })
+                    .ToList(),
+                
                 IsPersonalizable = product.IsPersonalizable,
                 IsActive = product.IsActive,
                 CreatedAt = product.CreatedAt,
@@ -110,8 +127,20 @@ namespace memoriza_backend.Services.Admin.Products
             var images = await _imageRepository.GetByProductIdAsync(id);
             var sizeIds = await _productRepository.GetSizeIdsByProductIdAsync(id);
             var colorIds = await _productRepository.GetColorIdsByProductIdAsync(id);
+            
+            // NOVO: Buscar tamanhos com preços
+            var sizesWithPricesRaw = await _productRepository.GetSizesWithPricesByProductIdAsync(id);
+            var allSizes = await _sizeRepository.GetAllAsync();
+            
+            var sizesWithPrices = sizesWithPricesRaw
+                .Select(s =>
+                {
+                    var sizeName = allSizes.FirstOrDefault(size => size.Id == s.SizeId)?.Name ?? "Desconhecido";
+                    return (s.SizeId, sizeName, s.Price, s.PromotionalPrice);
+                })
+                .ToList();
 
-            return MapToDto(product, images, sizeIds, colorIds);
+            return MapToDto(product, images, sizeIds, colorIds, sizesWithPrices);
         }
 
         public async Task<ProductResponseDto> CreateAsync(CreateProductDto dto)
@@ -134,11 +163,30 @@ namespace memoriza_backend.Services.Admin.Products
             // vincula tamanhos e cores
             await _productRepository.ReplaceProductSizesAsync(product.Id, dto.SizeIds);
             await _productRepository.ReplaceProductColorsAsync(product.Id, dto.ColorIds);
+            
+            // NOVO: Salvar preços dos tamanhos se fornecidos
+            if (dto.SizePrices != null && dto.SizePrices.Any())
+            {
+                var sizePrices = dto.SizePrices
+                    .Select(sp => (sp.SizeId, sp.Price, sp.PromotionalPrice));
+                await _productRepository.UpdateSizePricesAsync(product.Id, sizePrices);
+            }
 
             var sizeIds = await _productRepository.GetSizeIdsByProductIdAsync(product.Id);
             var colorIds = await _productRepository.GetColorIdsByProductIdAsync(product.Id);
+            
+            // Buscar tamanhos com preços para retornar
+            var sizesWithPricesRaw = await _productRepository.GetSizesWithPricesByProductIdAsync(product.Id);
+            var allSizes = await _sizeRepository.GetAllAsync();
+            var sizesWithPrices = sizesWithPricesRaw
+                .Select(s =>
+                {
+                    var sizeName = allSizes.FirstOrDefault(size => size.Id == s.SizeId)?.Name ?? "Desconhecido";
+                    return (s.SizeId, sizeName, s.Price, s.PromotionalPrice);
+                })
+                .ToList();
 
-            return MapToDto(product, null, sizeIds, colorIds);
+            return MapToDto(product, null, sizeIds, colorIds, sizesWithPrices);
         }
 
         public async Task<ProductResponseDto> UpdateAsync(Guid id, UpdateProductDto dto)
@@ -160,12 +208,31 @@ namespace memoriza_backend.Services.Admin.Products
             // atualiza tamanhos e cores
             await _productRepository.ReplaceProductSizesAsync(id, dto.SizeIds);
             await _productRepository.ReplaceProductColorsAsync(id, dto.ColorIds);
+            
+            // NOVO: Atualizar preços dos tamanhos se fornecidos
+            if (dto.SizePrices != null && dto.SizePrices.Any())
+            {
+                var sizePrices = dto.SizePrices
+                    .Select(sp => (sp.SizeId, sp.Price, sp.PromotionalPrice));
+                await _productRepository.UpdateSizePricesAsync(id, sizePrices);
+            }
 
             var images = await _imageRepository.GetByProductIdAsync(id);
             var sizeIds = await _productRepository.GetSizeIdsByProductIdAsync(id);
             var colorIds = await _productRepository.GetColorIdsByProductIdAsync(id);
+            
+            // Buscar tamanhos com preços para retornar
+            var sizesWithPricesRaw = await _productRepository.GetSizesWithPricesByProductIdAsync(id);
+            var allSizes = await _sizeRepository.GetAllAsync();
+            var sizesWithPrices = sizesWithPricesRaw
+                .Select(s =>
+                {
+                    var sizeName = allSizes.FirstOrDefault(size => size.Id == s.SizeId)?.Name ?? "Desconhecido";
+                    return (s.SizeId, sizeName, s.Price, s.PromotionalPrice);
+                })
+                .ToList();
 
-            return MapToDto(existing, images, sizeIds, colorIds);
+            return MapToDto(existing, images, sizeIds, colorIds, sizesWithPrices);
         }
 
         public async Task DeleteAsync(Guid id)

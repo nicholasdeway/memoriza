@@ -230,6 +230,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
             {
               productId: incoming.productId,
               quantity: incoming.quantity > 0 ? incoming.quantity : 1,
+              sizeId: incoming.sizeId,
+              colorId: incoming.colorId,
+              personalizationText: incoming.personalizationText,
             },
             token
           )
