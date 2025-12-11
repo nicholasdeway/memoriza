@@ -34,6 +34,13 @@ interface ProductImageDto {
   createdAt: string
 }
 
+interface ProductSizeDto {
+  sizeId: number
+  sizeName: string
+  price: number | null
+  promotionalPrice: number | null
+}
+
 interface ProductResponseDto {
   id: string
   categoryId: string
@@ -43,6 +50,7 @@ interface ProductResponseDto {
   promotionalPrice?: number | null
   sizeIds: number[]
   colorIds: number[]
+  sizes: ProductSizeDto[]
   isPersonalizable: boolean
   isActive: boolean
   createdAt: string
@@ -94,6 +102,7 @@ interface Product {
   categoriaNome: string
   tamanhos: SizeOption[]
   cores: ColorOption[]
+  sizes: ProductSizeDto[]
   personalizavel: boolean
   imagens: ProductImageDto[]
 }
@@ -199,6 +208,7 @@ export default function ProductDetailPage({
           categoriaNome,
           tamanhos,
           cores,
+          sizes: prodJson.sizes ?? [],
           personalizavel: prodJson.isPersonalizable,
           imagens: imagensOrdenadas,
         }
@@ -223,18 +233,44 @@ export default function ProductDetailPage({
     void loadProduct()
   }, [id])
 
-  // Buscar parcelamento quando o produto carregar
+  // NOVO: Calcular preço baseado no tamanho selecionado
+  const getSelectedSizePrice = (): { price: number; promoPrice: number | null } => {
+    if (!product) return { price: 0, promoPrice: null }
+    
+    // Se não tiver tamanho selecionado, usa preço base
+    if (!selectedSizeId) {
+      return { price: product.preco, promoPrice: product.precoPromocional }
+    }
+    
+    // Buscar dados de preço do tamanho selecionado
+    const sizeData = product.sizes?.find(s => s.sizeId === selectedSizeId)
+    
+    // Se não encontrar dados ou não tiver preço específico, usa preço base
+    if (!sizeData || (sizeData.price === null && sizeData.promotionalPrice === null)) {
+      return { price: product.preco, promoPrice: product.precoPromocional }
+    }
+    
+    // Usa preço específico do tamanho (fallback para preço base se null)
+    return {
+      price: sizeData.price ?? product.preco,
+      promoPrice: sizeData.promotionalPrice ?? product.precoPromocional
+    }
+  }
+
+  const { price: currentPrice, promoPrice: currentPromoPrice } = getSelectedSizePrice()
+
+  // Buscar parcelamento quando o produto ou tamanho selecionado mudar
   useEffect(() => {
     if (!product) return;
 
     const fetchInstallments = async () => {
-      const finalPrice = product.precoPromocional ?? product.preco;
+      const finalPrice = currentPromoPrice ?? currentPrice;
       const installmentsData = await fetchInstallmentsFromAPI(finalPrice);
       setInstallments(installmentsData);
     };
 
     void fetchInstallments();
-  }, [product]);
+  }, [product, selectedSizeId, currentPrice, currentPromoPrice]);
 
   if (loading) {
     return (
@@ -317,12 +353,37 @@ export default function ProductDetailPage({
     try {
       setIsAdding(true)
 
-      const priceToUse = product.precoPromocional ?? product.preco
+      // NOVO: Recalcular preço do tamanho selecionado no momento de adicionar
+      let priceToUse = product.preco
+      let promoToUse = product.precoPromocional
+
+      if (selectedSizeId) {
+        const sizeData = product.sizes?.find(s => s.sizeId === selectedSizeId)
+        if (sizeData) {
+          // Se o tamanho tiver preço específico, usa ele
+          if (sizeData.price !== null) {
+            priceToUse = sizeData.price
+          }
+          if (sizeData.promotionalPrice !== null) {
+            promoToUse = sizeData.promotionalPrice
+          }
+        }
+      }
+
+      const finalPrice = promoToUse ?? priceToUse
+
+      console.log('Adding to cart:', {
+        sizeId: selectedSizeId,
+        sizeName: selectedSize?.nome,
+        priceToUse,
+        promoToUse,
+        finalPrice
+      })
 
       addItem({
         productId: product.id,
         name: product.nome,
-        price: priceToUse,
+        price: finalPrice,
         imageUrl: mainImage,
         quantity,
         colorId: selectedColor?.id,
@@ -425,17 +486,17 @@ export default function ProductDetailPage({
               </div>
 
               <div className="border-t border-b border-border py-6 space-y-4">
-                <div className="flex items-baseline gap-3">
-                  <span className="text-4xl font-medium text-primary">
-                    R$ {(product.precoPromocional ?? product.preco).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <span className="text-4xl font-medium text-accent">
+                    R$ {(currentPromoPrice ?? currentPrice).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-normal text-foreground/60">à vista no PIX</span>
                   </span>
-                  {product.precoPromocional && (
+                  {currentPromoPrice && (
                     <>
                       <span className="text-lg text-foreground/50 line-through">
-                        R$ {product.preco.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        R$ {currentPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                       <span className="text-sm bg-accent text-accent-foreground px-2 py-1 rounded">
-                        -{Math.round(((product.preco - product.precoPromocional) / product.preco) * 100)}%
+                        -{Math.round(((currentPrice - currentPromoPrice) / currentPrice) * 100)}%
                       </span>
                     </>
                   )}
