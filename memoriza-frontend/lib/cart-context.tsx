@@ -1,30 +1,35 @@
 "use client"
 
-import {
+import React, {
   createContext,
   useContext,
   useEffect,
   useState,
-  type ReactNode,
+  useCallback,
+  useMemo,
 } from "react"
-import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
-import * as cartApi from "@/lib/api/cart"
+import {
+  getCart,
+  addCartItem,
+  updateCartItemQuantity,
+  removeCartItem,
+  clearCart as clearCartApi,
+} from "@/lib/api/cart"
 import type { CartItemDto } from "@/types/cart"
+import { toast } from "sonner"
 
-const CART_STORAGE_KEY = "memoriza_cart_v1"
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
 
-// ==== Tipos ====
-
-export interface CartItem {
+// Local cart item structure (for localStorage)
+export interface LocalCartItem {
   id: string
   productId: string
   name: string
-  imageUrl?: string | null
   price: number
+  imageUrl: string | null
   quantity: number
-
-  // customização
   sizeId?: number
   sizeName?: string
   colorId?: number
@@ -32,364 +37,455 @@ export interface CartItem {
   personalizationText?: string
 }
 
-interface CartContextValue {
-  items: CartItem[]
+type CartContextValue = {
+  items: LocalCartItem[]
   itemsCount: number
   subtotal: number
-  addItem: (item: Omit<CartItem, "id"> & { id?: string }) => void
-  removeItem: (lineId: string) => void
-  /**
-   * Atualiza quantidade de um item levando em conta
-   * produto + tamanho + cor + texto de personalização
-   */
+  addItem: (params: {
+    productId: string
+    name: string
+    price: number
+    imageUrl: string | null
+    quantity?: number
+    sizeId?: number
+    sizeName?: string
+    colorId?: number
+    colorName?: string
+    personalizationText?: string
+  }) => Promise<void>
   updateQuantity: (
     productId: string,
     quantity: number,
     sizeId?: number,
     colorId?: number,
-    personalizationText?: string,
-  ) => void
-  clearCart: () => void
+    personalizationText?: string
+  ) => Promise<void>
+  removeItem: (itemId: string) => Promise<void>
+  clearCart: () => Promise<void>
+  isLoading: boolean
 }
 
 const CartContext = createContext<CartContextValue | undefined>(undefined)
 
-// ==== Helpers ====
+const CART_STORAGE_KEY = "memoriza_cart"
 
-function normalizeNumber(value: unknown): number {
-  if (typeof value === "number" && !Number.isNaN(value)) return value
-  if (typeof value === "string") {
-    const normalized = value.replace(",", ".")
-    const parsed = Number(normalized)
-    return Number.isNaN(parsed) ? 0 : parsed
-  }
-  return 0
+/* ======================================================
+   Helper: Generate unique cart item ID
+====================================================== */
+function generateCartItemId(
+  productId: string,
+  sizeId?: number,
+  colorId?: number,
+  personalizationText?: string
+): string {
+  const parts = [productId]
+  if (sizeId) parts.push(`s${sizeId}`)
+  if (colorId) parts.push(`c${colorId}`)
+  if (personalizationText) parts.push(`p${personalizationText}`)
+  return parts.join("-")
 }
 
-function loadInitialCart(): CartItem[] {
-  if (typeof window === "undefined") return []
-
-  try {
-    const raw = window.localStorage.getItem(CART_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-
-    if (!Array.isArray(parsed)) return []
-
-    // garante que o que vem do storage está coerente
-    return parsed.map((item: any): CartItem => ({
-      id: String(item.id ?? crypto.randomUUID()),
-      productId: String(item.productId ?? ""),
-      name: String(item.name ?? "Produto"),
-      imageUrl: item.imageUrl ?? null,
-      price: normalizeNumber(item.price),
-      quantity:
-        typeof item.quantity === "number" && item.quantity > 0
-          ? item.quantity
-          : 1,
-      sizeId: typeof item.sizeId === "number" ? item.sizeId : undefined,
-      sizeName: item.sizeName ?? undefined,
-      colorId: typeof item.colorId === "number" ? item.colorId : undefined,
-      colorName: item.colorName ?? undefined,
-      personalizationText: item.personalizationText ?? undefined,
-    }))
-  } catch {
-    return []
+/* ======================================================
+   Helper: Convert backend DTO to local cart item
+====================================================== */
+function convertDtoToLocalItem(dto: CartItemDto): LocalCartItem {
+  return {
+    id: dto.cartItemId,
+    productId: dto.productId,
+    name: dto.productName,
+    price: dto.unitPrice,
+    imageUrl: dto.thumbnailUrl,
+    quantity: dto.quantity,
   }
 }
 
-// ==== Provider ====
+/* ======================================================
+   CartProvider
+====================================================== */
+export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const { token, user } = useAuth()
+  const [items, setItems] = useState<LocalCartItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [hasMigratedCart, setHasMigratedCart] = useState(false)
 
-export function CartProvider({ children }: { children: ReactNode }) {
-  const { token } = useAuth()
-  
-  // começa sempre vazio no SSR e no cliente
-  const [items, setItems] = useState<CartItem[]>([])
-  const [syncing, setSyncing] = useState(false)
-
-  // carrega do localStorage só depois que o componente está montado (cliente)
-  // MAS APENAS se o usuário NÃO estiver logado
-  useEffect(() => {
-    // Se tem token, o backend será a fonte da verdade
-    if (token) {
-      console.log("⚠️ Usuário logado, ignorando localStorage")
-      return
-    }
-    
-    console.log("📂 Carregando carrinho do localStorage...")
-    const initial = loadInitialCart()
-    console.log("📦 localStorage tem:", initial.length, "itens")
-    setItems(initial)
-  }, [token])
-
-  // 🔄 Sincroniza com backend quando usuário loga
-  useEffect(() => {
-    if (!token || syncing) return
-
-    const syncWithBackend = async () => {
-      console.log("🔄 Iniciando sincronização com backend...")
-      setSyncing(true)
-      try {
-        const backendCart = await cartApi.getCart(token)
-        console.log("📦 Carrinho do backend:", backendCart.items.length, "itens")
-        
-        // Converte items do backend para formato do frontend
-        const backendItems: CartItem[] = backendCart.items.map((item: CartItemDto) => ({
-          id: item.cartItemId,
-          productId: item.productId,
-          name: item.productName,
-          imageUrl: item.thumbnailUrl,
-          price: item.unitPrice,
-          quantity: item.quantity,
-          // Backend não tem size/color/personalization, então deixa undefined
-        }))
-
-        console.log("✅ Carrinho sincronizado do backend")
-        
-        // Backend é a fonte da verdade quando logado
-        setItems(backendItems)
-        
-        // 🔥 IMPORTANTE: Limpa localStorage para evitar conflitos
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(backendItems))
-          console.log("🗑️ localStorage atualizado com dados do backend")
-        }
-      } catch (error) {
-        console.error("❌ Erro ao sincronizar carrinho:", error)
-        // Mantém localStorage em caso de erro
-      } finally {
-        setSyncing(false)
+  /* ======================================================
+     Load cart from localStorage (for non-logged users)
+  ====================================================== */
+  const loadLocalCart = useCallback(() => {
+    if (typeof window === "undefined") return []
+    try {
+      const stored = window.localStorage.getItem(CART_STORAGE_KEY)
+      if (stored) {
+        return JSON.parse(stored) as LocalCartItem[]
       }
+    } catch (error) {
+      console.error("Error loading cart from localStorage:", error)
     }
+    return []
+  }, [])
 
-    void syncWithBackend()
-  }, [token])
-
-  // salva no localStorage sempre que mudar
-  useEffect(() => {
+  /* ======================================================
+     Save cart to localStorage
+  ====================================================== */
+  const saveLocalCart = useCallback((cartItems: LocalCartItem[]) => {
     if (typeof window === "undefined") return
-    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
-  }, [items])
+    try {
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems))
+    } catch (error) {
+      console.error("Error saving cart to localStorage:", error)
+    }
+  }, [])
 
-  const itemsCount = items.reduce((sum, item) => sum + item.quantity, 0)
-  const subtotal = items.reduce(
-    (sum, item) => sum + normalizeNumber(item.price) * item.quantity,
-    0,
+  /* ======================================================
+     Clear localStorage cart
+  ====================================================== */
+  const clearLocalCart = useCallback(() => {
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.removeItem(CART_STORAGE_KEY)
+    } catch (error) {
+      console.error("Error clearing cart from localStorage:", error)
+    }
+  }, [])
+
+  /* ======================================================
+     Fetch cart from backend (for logged users)
+  ====================================================== */
+  const fetchBackendCart = useCallback(async (authToken: string) => {
+    try {
+      const response = await getCart(authToken)
+      const backendItems = response.items.map(convertDtoToLocalItem)
+      setItems(backendItems)
+      return backendItems
+    } catch (error) {
+      console.error("Error fetching cart from backend:", error)
+      return []
+    }
+  }, [])
+
+  /* ======================================================
+     Migrate local cart to backend after login
+  ====================================================== */
+  const migrateLocalCartToBackend = useCallback(
+    async (authToken: string, localItems: LocalCartItem[]) => {
+      if (localItems.length === 0) return
+
+      try {
+        // Add each local item to backend
+        for (const item of localItems) {
+          await addCartItem(
+            {
+              productId: item.productId,
+              quantity: item.quantity,
+              sizeId: item.sizeId,
+              colorId: item.colorId,
+              personalizationText: item.personalizationText,
+            },
+            authToken
+          )
+        }
+
+        // Clear local storage after successful migration
+        clearLocalCart()
+        
+        // Fetch updated cart from backend
+        await fetchBackendCart(authToken)
+      } catch (error) {
+        console.error("Error migrating cart to backend:", error)
+        toast.error("Erro ao sincronizar carrinho")
+      }
+    },
+    [clearLocalCart, fetchBackendCart]
   )
 
-  const addItem: CartContextValue["addItem"] = (incoming) => {
-    const price = normalizeNumber(incoming.price)
+  /* ======================================================
+     Initialize cart on mount and when auth changes
+  ====================================================== */
+  useEffect(() => {
+    const initializeCart = async () => {
+      setIsLoading(true)
 
-    // chave para considerar o mesmo "tipo" de item (produto + tamanho + cor + texto)
-    const matchKey = (item: CartItem) =>
-      item.productId === incoming.productId &&
-      item.sizeId === incoming.sizeId &&
-      item.colorId === incoming.colorId &&
-      (item.personalizationText ?? "") ===
-        (incoming.personalizationText ?? "")
+      if (token && user) {
+        // User is logged in
+        const localItems = loadLocalCart()
+        
+        // Fetch backend cart first
+        await fetchBackendCart(token)
 
-    // 🔄 Atualiza UI imediatamente (optimistic update)
-    setItems((prev) => {
-      const existingIndex = prev.findIndex(matchKey)
-
-      if (existingIndex >= 0) {
-        const updated = [...prev]
-        updated[existingIndex] = {
-          ...updated[existingIndex],
-          quantity: updated[existingIndex].quantity + (incoming.quantity || 1),
-          price,
+        // Migrate local cart if exists and not already migrated
+        if (localItems.length > 0 && !hasMigratedCart) {
+          await migrateLocalCartToBackend(token, localItems)
+          setHasMigratedCart(true)
         }
-        return updated
+      } else {
+        // User is not logged in, load from localStorage
+        const localItems = loadLocalCart()
+        setItems(localItems)
+        setHasMigratedCart(false)
       }
 
-      const lineId = incoming.id ?? crypto.randomUUID()
+      setIsLoading(false)
+    }
 
-      const newItem: CartItem = {
-        id: lineId,
-        productId: incoming.productId,
-        name: incoming.name,
-        imageUrl: incoming.imageUrl ?? null,
+    void initializeCart()
+  }, [token, user, loadLocalCart, fetchBackendCart, migrateLocalCartToBackend, hasMigratedCart])
+
+  /* ======================================================
+     Save to localStorage whenever items change (for non-logged users)
+  ====================================================== */
+  useEffect(() => {
+    if (!token && !isLoading) {
+      saveLocalCart(items)
+    }
+  }, [items, token, isLoading, saveLocalCart])
+
+  /* ======================================================
+     ADD ITEM
+  ====================================================== */
+  const addItem = useCallback(
+    async (params: {
+      productId: string
+      name: string
+      price: number
+      imageUrl: string | null
+      quantity?: number
+      sizeId?: number
+      sizeName?: string
+      colorId?: number
+      colorName?: string
+      personalizationText?: string
+    }) => {
+      const {
+        productId,
+        name,
         price,
-        quantity: incoming.quantity > 0 ? incoming.quantity : 1,
-        sizeId: incoming.sizeId,
-        sizeName: incoming.sizeName,
-        colorId: incoming.colorId,
-        colorName: incoming.colorName,
-        personalizationText: incoming.personalizationText,
-      }
+        imageUrl,
+        quantity = 1,
+        sizeId,
+        sizeName,
+        colorId,
+        colorName,
+        personalizationText,
+      } = params
 
-      return [...prev, newItem]
-    })
-
-    // 🔄 Sincroniza com backend se autenticado E re-sincroniza para pegar dados corretos
-    if (token) {
-      const syncAddItem = async () => {
+      if (token) {
+        // User is logged in, use backend
         try {
-          console.log("➕ Adicionando item ao backend...")
-          await cartApi.addCartItem(
+          const response = await addCartItem(
             {
-              productId: incoming.productId,
-              quantity: incoming.quantity > 0 ? incoming.quantity : 1,
-              sizeId: incoming.sizeId,
-              colorId: incoming.colorId,
-              personalizationText: incoming.personalizationText,
+              productId,
+              quantity,
+              sizeId,
+              colorId,
+              personalizationText,
             },
             token
           )
-          console.log("✅ Item adicionado ao backend")
-          
-          // 🔥 IMPORTANTE: Re-sincroniza com backend para pegar dados corretos (imagens, etc)
-          console.log("🔄 Re-sincronizando carrinho com backend...")
-          const backendCart = await cartApi.getCart(token)
-          const backendItems: CartItem[] = backendCart.items.map((item: CartItemDto) => ({
-            id: item.cartItemId,
-            productId: item.productId,
-            name: item.productName,
-            imageUrl: item.thumbnailUrl,
-            price: item.unitPrice,
-            quantity: item.quantity,
-          }))
-          
+          const backendItems = response.items.map(convertDtoToLocalItem)
           setItems(backendItems)
-          console.log("✅ Carrinho re-sincronizado com", backendItems.length, "itens")
-          
-          // Atualiza localStorage
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(backendItems))
-          }
         } catch (error) {
-          console.error("❌ Erro ao adicionar item:", error)
-          toast.error("Erro ao adicionar item. Tente novamente.")
+          console.error("Error adding item to cart:", error)
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Erro ao adicionar produto ao carrinho"
+          )
         }
+      } else {
+        // User is not logged in, use localStorage
+        const itemId = generateCartItemId(
+          productId,
+          sizeId,
+          colorId,
+          personalizationText
+        )
+
+        setItems((prevItems) => {
+          const existingItem = prevItems.find((item) => item.id === itemId)
+
+          if (existingItem) {
+            // Update quantity of existing item
+            return prevItems.map((item) =>
+              item.id === itemId
+                ? { ...item, quantity: item.quantity + quantity }
+                : item
+            )
+          } else {
+            // Add new item
+            const newItem: LocalCartItem = {
+              id: itemId,
+              productId,
+              name,
+              price,
+              imageUrl,
+              quantity,
+              sizeId,
+              sizeName,
+              colorId,
+              colorName,
+              personalizationText,
+            }
+            return [...prevItems, newItem]
+          }
+        })
       }
-      
-      void syncAddItem()
-    }
-  }
+    },
+    [token]
+  )
 
-  const removeItem: CartContextValue["removeItem"] = async (lineId) => {
-    console.log("🗑️ Removendo item:", lineId)
-    
-    // Salva estado anterior para rollback
-    const previousItems = [...items]
-    console.log("📦 Estado anterior:", previousItems.length, "itens")
-    
-    // Atualiza UI imediatamente (optimistic update)
-    setItems((prev) => prev.filter((item) => item.id !== lineId))
-    console.log("✅ UI atualizada (optimistic)")
+  /* ======================================================
+     UPDATE QUANTITY
+  ====================================================== */
+  const updateQuantity = useCallback(
+    async (
+      productId: string,
+      quantity: number,
+      sizeId?: number,
+      colorId?: number,
+      personalizationText?: string
+    ) => {
+      if (quantity < 1) return
 
-    // Sincroniza com backend se autenticado
-    if (token) {
-      console.log("🔄 Sincronizando com backend...")
-      try {
-        await cartApi.removeCartItem({ cartItemId: lineId }, token)
-        console.log("✅ Backend sincronizado com sucesso")
-      } catch (error) {
-        // ROLLBACK: Reverte para estado anterior
-        console.error("❌ Erro ao remover do backend, fazendo rollback:", error)
-        setItems(previousItems)
-        toast.error("Não foi possível remover o item. Tente novamente.")
-      }
-    } else {
-      console.log("⚠️ Sem token, item removido apenas localmente")
-    }
-  }
-
-  const updateQuantity: CartContextValue["updateQuantity"] = async (
-    productId,
-    quantity,
-    sizeId,
-    colorId,
-    personalizationText,
-  ) => {
-    const safeQuantity = quantity > 0 ? quantity : 1
-    
-    // Salva estado anterior para rollback
-    const previousItems = [...items]
-
-    // Atualiza UI imediatamente (optimistic update)
-    setItems((prev) =>
-      prev.map((item) => {
-        const sameProduct = item.productId === productId
-        const sameSize = (item.sizeId ?? undefined) === (sizeId ?? undefined)
-        const sameColor =
-          (item.colorId ?? undefined) === (colorId ?? undefined)
-        const sameText =
-          (item.personalizationText ?? "") ===
-          (personalizationText ?? "")
-
-        if (!(sameProduct && sameSize && sameColor && sameText)) {
-          return item
-        }
-
-        return {
-          ...item,
-          quantity: safeQuantity,
-        }
-      }),
-    )
-
-    // Sincroniza com backend se autenticado
-    if (token) {
-      // Encontra o item no estado anterior para pegar o ID correto
-      const item = previousItems.find((i) => {
-        const sameProduct = i.productId === productId
-        const sameSize = (i.sizeId ?? undefined) === (sizeId ?? undefined)
-        const sameColor = (i.colorId ?? undefined) === (colorId ?? undefined)
-        const sameText = (i.personalizationText ?? "") === (personalizationText ?? "")
-        return sameProduct && sameSize && sameColor && sameText
-      })
-
-      if (item) {
+      if (token) {
+        // User is logged in, use backend
         try {
-          await cartApi.updateCartItemQuantity(
-            { cartItemId: item.id, quantity: safeQuantity },
+          // Find the cart item ID from current items
+          const itemId = generateCartItemId(
+            productId,
+            sizeId,
+            colorId,
+            personalizationText
+          )
+          const item = items.find((i) => i.id === itemId)
+
+          if (!item) {
+            console.error("Item not found in cart")
+            return
+          }
+
+          const response = await updateCartItemQuantity(
+            {
+              cartItemId: item.id,
+              quantity,
+            },
             token
           )
+          const backendItems = response.items.map(convertDtoToLocalItem)
+          setItems(backendItems)
         } catch (error) {
-          // ROLLBACK: Reverte para estado anterior
-          setItems(previousItems)
-          console.error("Erro ao atualizar quantidade no backend:", error)
-          toast.error("Não foi possível atualizar a quantidade. Tente novamente.")
+          console.error("Error updating cart item quantity:", error)
+          toast.error("Erro ao atualizar quantidade")
         }
+      } else {
+        // User is not logged in, use localStorage
+        const itemId = generateCartItemId(
+          productId,
+          sizeId,
+          colorId,
+          personalizationText
+        )
+
+        setItems((prevItems) =>
+          prevItems.map((item) =>
+            item.id === itemId ? { ...item, quantity } : item
+          )
+        )
       }
-    }
-  }
-
-  const clearCart: CartContextValue["clearCart"] = () => {
-    setItems([])
-
-    // Sincroniza com backend se autenticado
-    if (token) {
-      cartApi.clearCart(token).catch((error) => {
-        console.error("Erro ao limpar carrinho no backend:", error)
-      })
-    }
-  }
-
-  return (
-    <CartContext.Provider
-      value={{
-        items,
-        itemsCount,
-        subtotal,
-        addItem,
-        removeItem,
-        updateQuantity,
-        clearCart,
-      }}
-    >
-      {children}
-    </CartContext.Provider>
+    },
+    [token, items]
   )
+
+  /* ======================================================
+     REMOVE ITEM
+  ====================================================== */
+  const removeItem = useCallback(
+    async (itemId: string) => {
+      if (token) {
+        // User is logged in, use backend
+        try {
+          const response = await removeCartItem(
+            {
+              cartItemId: itemId,
+            },
+            token
+          )
+          const backendItems = response.items.map(convertDtoToLocalItem)
+          setItems(backendItems)
+          toast.success("Produto removido do carrinho")
+        } catch (error) {
+          console.error("Error removing item from cart:", error)
+          toast.error("Erro ao remover produto")
+        }
+      } else {
+        // User is not logged in, use localStorage
+        setItems((prevItems) => prevItems.filter((item) => item.id !== itemId))
+        toast.success("Produto removido do carrinho")
+      }
+    },
+    [token]
+  )
+
+  /* ======================================================
+     CLEAR CART
+  ====================================================== */
+  const clearCart = useCallback(async () => {
+    if (token) {
+      // User is logged in, use backend
+      try {
+        await clearCartApi(token)
+        setItems([])
+        toast.success("Carrinho limpo")
+      } catch (error) {
+        console.error("Error clearing cart:", error)
+        toast.error("Erro ao limpar carrinho")
+      }
+    } else {
+      // User is not logged in, use localStorage
+      setItems([])
+      clearLocalCart()
+      toast.success("Carrinho limpo")
+    }
+  }, [token, clearLocalCart])
+
+  /* ======================================================
+     Calculate derived values
+  ====================================================== */
+  const itemsCount = useMemo(
+    () => items.reduce((total, item) => total + item.quantity, 0),
+    [items]
+  )
+
+  const subtotal = useMemo(
+    () => items.reduce((total, item) => total + item.price * item.quantity, 0),
+    [items]
+  )
+
+  const value = useMemo<CartContextValue>(
+    () => ({
+      items,
+      itemsCount,
+      subtotal,
+      addItem,
+      updateQuantity,
+      removeItem,
+      clearCart,
+      isLoading,
+    }),
+    [items, itemsCount, subtotal, addItem, updateQuantity, removeItem, clearCart, isLoading]
+  )
+
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>
 }
 
-// ==== Hook ====
-
-export function useCart(): CartContextValue {
+/* ======================================================
+   useCart Hook
+====================================================== */
+export const useCart = (): CartContextValue => {
   const ctx = useContext(CartContext)
   if (!ctx) {
-    throw new Error("useCart must be used within a CartProvider")
+    throw new Error("useCart deve ser utilizado dentro de um CartProvider")
   }
   return ctx
 }
