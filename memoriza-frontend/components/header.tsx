@@ -86,7 +86,7 @@ export function Header() {
   const [addressModalOpen, setAddressModalOpen] = useState(false);
 
   const { user, token, logout, isAdmin } = useAuth();
-  const { itemsCount, clearCart } = useCart();
+  const { itemsCount } = useCart();
 
   // animação do ícone do carrinho
   const [isCartBumping, setIsCartBumping] = useState(false);
@@ -318,7 +318,6 @@ export function Header() {
 
                             <button
                               onClick={() => {
-                                clearCart(); // limpa carrinho no logout
                                 logout();
                                 setProfileMenuOpen(false);
                               }}
@@ -359,7 +358,6 @@ export function Header() {
 
                             <button
                               onClick={() => {
-                                clearCart(); // limpa carrinho no logout
                                 logout();
                                 setProfileMenuOpen(false);
                               }}
