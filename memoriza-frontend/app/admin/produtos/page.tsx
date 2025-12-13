@@ -198,6 +198,7 @@ export default function AdminProdutos() {
   })
 
   const [modalImages, setModalImages] = useState<ModalImage[]>([])
+  const [isSaving, setIsSaving] = useState(false)
 
   // Estados para controlar AlertDialogs
   const [deleteImageDialog, setDeleteImageDialog] = useState<{
@@ -580,6 +581,25 @@ export default function AdminProdutos() {
       return;
     }
 
+    // Validação de campos obrigatórios
+    if (!formData.nome.trim()) {
+      toast.error('O nome do produto é obrigatório');
+      return;
+    }
+
+    if (!formData.categoriaId) {
+      toast.error('A categoria é obrigatória');
+      return;
+    }
+
+    if (!formData.preco || formData.preco === '0,00') {
+      toast.error('O preço do produto é obrigatório');
+      return;
+    }
+
+    setIsSaving(true);
+    console.log('🔄 Iniciando salvamento do produto...');
+
     try {
       // Helper para converter e arredondar corretamente
       const parsePrice = (value: string): number => {
@@ -637,7 +657,16 @@ export default function AdminProdutos() {
         )
 
         if (!res.ok) {
-          console.error("Erro ao atualizar produto.")
+          let errorMessage = "Erro ao atualizar produto."
+          try {
+            const errorData = await res.json()
+            errorMessage = errorData?.message || errorData?.title || errorMessage
+          } catch {
+            // Se não conseguir parsear, usa mensagem padrão
+          }
+          console.error("Erro ao atualizar produto:", errorMessage)
+          toast.error(errorMessage)
+          setIsSaving(false)
           return
         }
 
@@ -653,7 +682,16 @@ export default function AdminProdutos() {
         })
 
         if (!res.ok) {
-          console.error("Erro ao criar produto.")
+          let errorMessage = "Erro ao criar produto."
+          try {
+            const errorData = await res.json()
+            errorMessage = errorData?.message || errorData?.title || errorMessage
+          } catch {
+            // Se não conseguir parsear, usa mensagem padrão
+          }
+          console.error("Erro ao criar produto:", errorMessage)
+          toast.error(errorMessage)
+          setIsSaving(false)
           return
         }
 
@@ -727,8 +765,22 @@ export default function AdminProdutos() {
 
       setShowModal(false)
       setEditingProduct(null)
+      
+      // Toast de sucesso
+      toast.success(
+        editingProduct 
+          ? `Produto "${formData.nome}" atualizado com sucesso!`
+          : `Produto "${formData.nome}" criado com sucesso!`
+      )
     } catch (error) {
       console.error("Erro ao salvar produto:", error)
+      toast.error(
+        editingProduct
+          ? "Erro ao atualizar produto. Tente novamente."
+          : "Erro ao criar produto. Tente novamente."
+      )
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -1762,9 +1814,14 @@ export default function AdminProdutos() {
               {((editingProduct && canEdit) || (!editingProduct && canCreate)) && (
                 <button
                   onClick={handleSave}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {editingProduct ? "Salvar Alterações" : "Criar Produto"}
+                  {isSaving && <Loader2 size={16} className="animate-spin" />}
+                  {isSaving 
+                    ? (editingProduct ? "Salvando..." : "Criando...") 
+                    : (editingProduct ? "Salvar Alterações" : "Criar Produto")
+                  }
                 </button>
               )}
             </div>
@@ -1939,24 +1996,26 @@ export default function AdminProdutos() {
             <AlertDialogTitle>
               Excluir {bulkDeleteDialog.count} produtos?
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              Você selecionou <strong>{bulkDeleteDialog.count} produtos</strong>{" "}
-              para exclusão.
-              <br />
-              <br />
-              <ul className="list-disc list-inside space-y-1 text-sm">
-                <li>
-                  Produtos ativos serão marcados como{" "}
-                  <strong>inativos</strong>.
-                </li>
-                <li>
-                  Produtos inativos serão{" "}
-                  <strong>excluídos permanentemente</strong>.
-                </li>
-                <li>
-                  Produtos com vínculos serão mantidos (apenas inativados).
-                </li>
-              </ul>
+            <AlertDialogDescription asChild>
+              <div>
+                <p>
+                  Você selecionou <strong>{bulkDeleteDialog.count} produtos</strong>{" "}
+                  para exclusão.
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-sm mt-4">
+                  <li>
+                    Produtos ativos serão marcados como{" "}
+                    <strong>inativos</strong>.
+                  </li>
+                  <li>
+                    Produtos inativos serão{" "}
+                    <strong>excluídos permanentemente</strong>.
+                  </li>
+                  <li>
+                    Produtos com vínculos serão mantidos (apenas inativados).
+                  </li>
+                </ul>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
