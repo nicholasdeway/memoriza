@@ -1,0 +1,45 @@
+name: Build and deploy ASP.Net Core app to EC2 - memoriza
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET Core
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.x"
+
+      - name: Build
+        run: dotnet build memoriza-backend/memoriza-backend.sln --configuration Release
+
+      - name: Publish
+        run: dotnet publish memoriza-backend/memoriza-backend/memoriza-backend.csproj -c Release -o publish
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Upload to EC2 (rsync)
+        run: |
+          rsync -az --delete publish/ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.EC2_PATH }}/
+
+      - name: Fix permissions + Restart service
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
+            sudo chown -R nginx:nginx ${{ secrets.EC2_PATH }} && \
+            sudo chmod -R 755 ${{ secrets.EC2_PATH }} && \
+            sudo systemctl daemon-reload && \
+            sudo systemctl restart memoriza-api && \
+            sudo systemctl status memoriza-api --no-pager"
