@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Check, ArrowRight, Home, Loader2, ShoppingBag } from "lucide-react";
@@ -17,7 +17,7 @@ interface OrderDetails {
   createdAt: string;
 }
 
-export default function PaymentSuccessPage() {
+function PaymentSuccessPageContent() {
   const searchParams = useSearchParams();
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -131,5 +131,13 @@ export default function PaymentSuccessPage() {
       </div>
       <Footer />
     </>
+  );
+}
+
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando...</div>}>
+      <PaymentSuccessPageContent />
+    </Suspense>
   );
 }

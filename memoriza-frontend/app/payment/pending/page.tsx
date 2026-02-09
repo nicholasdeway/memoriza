@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Clock, ArrowRight, Home, Loader2 } from "lucide-react";
@@ -14,7 +14,7 @@ interface OrderDetails {
   totalAmount: number;
 }
 
-export default function PaymentPendingPage() {
+function PaymentPendingPageContent() {
   const searchParams = useSearchParams();
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,5 +105,13 @@ export default function PaymentPendingPage() {
       </div>
       <Footer />
     </>
+  );
+}
+
+export default function PaymentPendingPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando...</div>}>
+      <PaymentPendingPageContent />
+    </Suspense>
   );
 }

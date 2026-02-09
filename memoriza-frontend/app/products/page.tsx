@@ -3,7 +3,7 @@
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { WhatsAppButton } from "@/components/whatsapp-button";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Filter, ShoppingCart } from "lucide-react";
 import Link from "next/link";
@@ -136,7 +136,7 @@ const generateSlug = (nome: string) => {
     .replace(/(^-|-$)/g, "");
 };
 
-export default function ProductsPage() {
+function ProductsPageContent() {
   const searchParams = useSearchParams();
   
   // slug vindo da URL (?category=...)
@@ -1158,5 +1158,12 @@ export default function ProductsPage() {
       <Footer />
       <WhatsAppButton />
     </div>
+  );
+}
+export default function ProductsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando...</div>}>
+      <ProductsPageContent />
+    </Suspense>
   );
 }

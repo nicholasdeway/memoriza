@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Filter, Star, ShoppingCart } from "lucide-react";
@@ -139,7 +139,7 @@ const generateSlug = (nome: string) => {
     .replace(/(^-|-$)/g, "");
 };
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -814,5 +814,12 @@ export default function Home() {
       <Footer />
       <WhatsAppButton />
     </div>
+  );
+}
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }
