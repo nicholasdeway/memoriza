@@ -44,44 +44,35 @@ namespace memoriza_backend.Services.Payments
 
             try
             {
-                // BIN de cartão Mastercard brasileiro comum
-                // Este BIN tende a ter mais opções de parcelamento
                 const string GENERIC_MASTERCARD_BIN = "545301";
-                
+
                 // Chama API do Mercado Pago
                 var url = $"https://api.mercadopago.com/v1/payment_methods/installments" +
                          $"?public_key={_publicKey}" +
                          $"&amount={roundedAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
                          $"&bin={GENERIC_MASTERCARD_BIN}";
 
-                Console.WriteLine($"🔍 Buscando parcelamento do MP para R$ {roundedAmount}");
-                Console.WriteLine($"📡 URL: {url}");
-
                 var response = await _httpClient.GetAsync(url);
-
-                Console.WriteLine($"📊 Status: {response.StatusCode}");
 
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"❌ Erro na API do MP: {errorContent}");
-                    // Fallback para cálculo local
+
                     return GetFallbackInstallments(roundedAmount);
                 }
 
                 var content = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"✅ Resposta COMPLETA do MP:");
-                Console.WriteLine(content); // Log completo para debug
+
 
                 var mpResponses = JsonSerializer.Deserialize<List<MercadoPagoInstallmentsResponse>>(content);
 
                 if (mpResponses == null || mpResponses.Count == 0)
                 {
-                    Console.WriteLine($"⚠️ Resposta vazia do MP");
+
                     return GetFallbackInstallments(roundedAmount);
                 }
 
-                // Pega a primeira opção (geralmente é a mais comum)
+                // Pega a primeira opção
                 var mpResponse = mpResponses[0];
 
                 var result = new InstallmentsResponse
@@ -96,10 +87,8 @@ namespace memoriza_backend.Services.Payments
                     }).ToList()
                 };
 
-                // Define a melhor opção (última, que tem mais parcelas)
+                // Define a melhor opção
                 result.BestOption = result.Options.LastOrDefault();
-
-                Console.WriteLine($"✅ Retornando {result.Options.Count} opções de parcelamento");
 
                 // Cacheia por 1 hora
                 _cache.Set(cacheKey, result, CacheDuration);
@@ -109,8 +98,7 @@ namespace memoriza_backend.Services.Payments
             catch (Exception ex)
             {
                 // Em caso de erro, retorna fallback
-                Console.WriteLine($"❌ ERRO ao buscar parcelamento do MP: {ex.Message}");
-                Console.WriteLine($"🔧 Stack: {ex.StackTrace}");
+
                 return GetFallbackInstallments(roundedAmount);
             }
         }
@@ -132,7 +120,7 @@ namespace memoriza_backend.Services.Payments
             {
                 decimal installmentAmount;
                 decimal totalAmount;
-                bool hasInterest = i > 3; // Sem juros até 3x
+                bool hasInterest = i > 1; // Sem juros apenas à vista (1x)
 
                 if (hasInterest)
                 {

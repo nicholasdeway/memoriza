@@ -17,9 +17,7 @@ namespace memoriza_backend.Services.Admin.Sizes
             _repository = repository;
         }
 
-        // ======================================================
         // GET ALL
-        // ======================================================
         public async Task<IReadOnlyList<SizeResponseDto>> GetAllAsync()
         {
             var list = await _repository.GetAllAsync();
@@ -29,18 +27,14 @@ namespace memoriza_backend.Services.Admin.Sizes
                 .ToList();
         }
 
-        // ======================================================
         // GET BY ID
-        // ======================================================
         public async Task<SizeResponseDto?> GetByIdAsync(int id)
         {
             var entity = await _repository.GetByIdAsync(id);
             return entity is null ? null : MapToDto(entity);
         }
 
-        // ======================================================
         // CREATE
-        // ======================================================
         public async Task<SizeResponseDto> CreateAsync(CreateSizeDto dto)
         {
             if (await _repository.ExistsByNameAsync(dto.Name))
@@ -57,9 +51,7 @@ namespace memoriza_backend.Services.Admin.Sizes
             return MapToDto(entity);
         }
 
-        // ======================================================
         // UPDATE
-        // ======================================================
         public async Task<SizeResponseDto> UpdateAsync(int id, UpdateSizeDto dto)
         {
             var entity = await _repository.GetByIdAsync(id)
@@ -78,17 +70,13 @@ namespace memoriza_backend.Services.Admin.Sizes
             return MapToDto(entity);
         }
 
-        // ======================================================
         // DELETE (regras implementadas no Repository)
-        // ======================================================
         public async Task DeleteAsync(int id)
         {
             await _repository.DeleteAsync(id);
         }
 
-        // ======================================================
         // MAP
-        // ======================================================
         private static SizeResponseDto MapToDto(Size s) => new()
         {
             Id = s.Id,

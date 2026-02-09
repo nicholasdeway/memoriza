@@ -14,8 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 interface Endereco {
   id: string
@@ -61,7 +60,7 @@ interface BrasilApiError {
 }
 
 export default function EnderecosPage() {
-  const { token } = useAuth()
+  const { user } = useAuth()
 
   const [enderecos, setEnderecos] = useState<Endereco[]>([])
   const [modalOpen, setModalOpen] = useState(false)
@@ -106,13 +105,11 @@ export default function EnderecosPage() {
     }
   }
 
-  async function fetchEnderecos(authToken: string) {
+  const fetchEnderecos = async () => {
     try {
       setLoading(true)
       const res = await fetch(`${API_BASE_URL}/api/profile/addresses`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
+        credentials: "include",
       })
 
       if (!res.ok) {
@@ -130,9 +127,9 @@ export default function EnderecosPage() {
   }
 
   useEffect(() => {
-    if (!token) return
-    void fetchEnderecos(token)
-  }, [token])
+    if (!user) return
+    void fetchEnderecos()
+  }, [user])
 
   const resetForm = () => {
     setForm({
@@ -172,7 +169,7 @@ export default function EnderecosPage() {
   }
 
   const handleSave = async () => {
-    if (!token) {
+    if (!user) {
       alert("Você precisa estar logado para gerenciar endereços.")
       return
     }
@@ -208,9 +205,9 @@ export default function EnderecosPage() {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
+        credentials: "include",
       })
 
       if (!res.ok) {
@@ -220,7 +217,7 @@ export default function EnderecosPage() {
         return
       }
 
-      await fetchEnderecos(token)
+      await fetchEnderecos()
 
       setModalOpen(false)
       resetForm()
@@ -233,7 +230,7 @@ export default function EnderecosPage() {
   }
 
   const handleDelete = (id: string) => {
-    if (!token) {
+    if (!user) {
       alert("Você precisa estar logado para gerenciar endereços.")
       return
     }
@@ -250,14 +247,12 @@ export default function EnderecosPage() {
 
   const confirmDelete = async () => {
     const { addressId } = deleteDialog
-    if (!addressId || !token) return
+    if (!addressId || !user) return
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/profile/addresses/${addressId}`, {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
       })
 
       if (!res.ok && res.status !== 204) {
@@ -276,7 +271,7 @@ export default function EnderecosPage() {
   }
 
   const handleSetPrincipal = async (id: string) => {
-    if (!token) {
+    if (!user) {
       alert("Você precisa estar logado para gerenciar endereços.")
       return
     }
@@ -286,9 +281,7 @@ export default function EnderecosPage() {
         `${API_BASE_URL}/api/profile/addresses/${id}/set-default`,
         {
           method: "PUT",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
         },
       )
 
@@ -298,7 +291,7 @@ export default function EnderecosPage() {
         return
       }
 
-      await fetchEnderecos(token)
+      await fetchEnderecos()
     } catch (err) {
       console.error("Erro ao definir principal:", err)
       alert("Ocorreu um erro ao definir o endereço como principal.")

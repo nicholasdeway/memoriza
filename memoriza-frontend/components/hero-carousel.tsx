@@ -5,8 +5,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react"
 import Link from "next/link"
 import { type CarouselItem } from "@/types/carousel"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 // --- Templates ---
 
@@ -16,9 +15,11 @@ const DefaultTemplate = ({ item }: { item: CarouselItem }) => (
       <div className="flex flex-col md:flex-row items-center gap-8 py-12 md:py-16">
         {/* Content */}
         <div className="flex-1 text-center md:text-left">
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-light text-foreground mb-4 text-balance">
-            {item.title}
-          </h2>
+          {item.title && (
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-light text-foreground mb-4 text-balance">
+              {item.title}
+            </h2>
+          )}
           <p className="text-lg text-foreground/70 mb-6 max-w-lg">
             {item.subtitle}
           </p>
@@ -93,9 +94,11 @@ const OverlayTemplate = ({ item }: { item: CarouselItem }) => (
     {/* Content */}
     <div className="relative z-10 h-full flex items-center justify-center text-center px-4">
       <div className="max-w-3xl">
-        <h2 className="text-3xl md:text-5xl font-bold text-white mb-4 drop-shadow-md">
-          {item.title}
-        </h2>
+        {item.title && (
+          <h2 className="text-3xl md:text-5xl font-bold text-white mb-4 drop-shadow-md">
+            {item.title}
+          </h2>
+        )}
         <p className="text-lg md:text-xl text-white/90 mb-8 drop-shadow-sm">
           {item.subtitle}
         </p>
@@ -124,9 +127,11 @@ const MinimalTemplate = ({ item }: { item: CarouselItem }) => (
           />
         </div>
       )}
-      <h2 className="text-2xl md:text-3xl font-medium text-foreground mb-3">
-        {item.title}
-      </h2>
+      {item.title && (
+        <h2 className="text-2xl md:text-3xl font-medium text-foreground mb-3">
+          {item.title}
+        </h2>
+      )}
       <p className="text-muted-foreground mb-6">{item.subtitle}</p>
       {item.ctaText && (
         <Link
@@ -150,8 +155,13 @@ export function HeroCarousel() {
   useEffect(() => {
     const fetchSlides = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/carousel-items/active`)
-        if (!res.ok) throw new Error("Falha ao carregar banners")
+        const res = await fetch(`${API_BASE_URL}/api/carousel-items/active`, {
+          credentials: "include",
+        })
+        if (!res.ok) {
+          console.error(`Erro no carousel: Status ${res.status} de ${res.url}`);
+          throw new Error("Falha ao carregar banners");
+        }
         const data = await res.json()
         setSlides(data)
       } catch (error) {

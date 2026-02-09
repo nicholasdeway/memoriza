@@ -19,5 +19,9 @@ namespace memoriza_backend.Services.Admin.Orders
         /// Atualiza informações de rastreio (tracking code / transportadora / URL).
         /// </summary>
         Task UpdateTrackingAsync(Guid orderId, OrderDetailDto dto);
+
+        Task ApproveRefundAsync(Guid orderId, RefundDecisionDto dto);
+        Task RejectRefundAsync(Guid orderId, RefundDecisionDto dto);
+        Task<int> GetPaidOrdersCountAsync();
     }
 }

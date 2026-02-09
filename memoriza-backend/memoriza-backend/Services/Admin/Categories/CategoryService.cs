@@ -13,9 +13,7 @@ namespace memoriza_backend.Services.Admin.Categories
             _repository = repository;
         }
 
-        // ======================================================
         // GET ALL
-        // ======================================================
         public async Task<IReadOnlyList<CategoryResponseDto>> GetAllAsync()
         {
             var entities = await _repository.GetAllAsync();
@@ -32,9 +30,7 @@ namespace memoriza_backend.Services.Admin.Categories
                 .ToList();
         }
 
-        // ======================================================
         // GET BY ID
-        // ======================================================
         public async Task<CategoryResponseDto?> GetByIdAsync(Guid id)
         {
             var c = await _repository.GetByIdAsync(id);
@@ -50,9 +46,7 @@ namespace memoriza_backend.Services.Admin.Categories
             };
         }
 
-        // ======================================================
         // CREATE
-        // ======================================================
         public async Task<CategoryResponseDto> CreateAsync(CreateCategoryDto dto)
         {
             var category = new Category
@@ -75,9 +69,7 @@ namespace memoriza_backend.Services.Admin.Categories
             };
         }
 
-        // ======================================================
         // UPDATE
-        // ======================================================
         public async Task<CategoryResponseDto> UpdateAsync(Guid id, UpdateCategoryDto dto)
         {
             var category = await _repository.GetByIdAsync(id);
@@ -100,9 +92,7 @@ namespace memoriza_backend.Services.Admin.Categories
             };
         }
 
-        // ======================================================
         // DELETE (Regras implementadas no Repository)
-        // ======================================================
         public async Task DeleteAsync(Guid id)
         {
             await _repository.DeleteAsync(id);

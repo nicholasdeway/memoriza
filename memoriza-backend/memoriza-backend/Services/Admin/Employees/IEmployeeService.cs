@@ -5,7 +5,7 @@ namespace memoriza_backend.Services.Admin.Employees
     public interface IEmployeeService
     {
         Task<IReadOnlyList<EmployeeResponseDto>> GetAllAsync();
-        Task<EmployeeResponseDto?> GetByIdAsync(Guid id);
+        Task<EmployeeDetailDto?> GetByIdAsync(Guid id);
 
         Task<Guid> CreateAsync(EmployeeFormDto dto);
         Task UpdateAsync(Guid id, EmployeeFormDto dto);

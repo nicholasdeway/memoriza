@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, FormEvent } from "react"
+import { useState, useEffect, FormEvent, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, MapPin, X, Check } from "lucide-react"
@@ -13,9 +13,16 @@ import { useCart } from "@/lib/cart-context"
 import { useAuth } from "@/lib/auth-context"
 import { checkout } from "@/lib/api/orders"
 import type { CreateOrderRequest } from "@/types/orders"
+import { initMercadoPago, CardPayment } from "@mercadopago/sdk-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 type PaymentMethod = "pix" | "card"
 
@@ -73,10 +80,22 @@ interface BrasilApiError {
 export default function CheckoutPage() {
   const router = useRouter()
   const { items, subtotal, clearCart } = useCart()
-  const { user, token } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
+
+  // Detectar ambiente MercadoPago
+  const isMercadoPagoTest = process.env.NEXT_PUBLIC_MERCADOPAGO_ENV === 'test'
+
+  // Estado para armazenar dados do PIX gerado
+  const [pixData, setPixData] = useState<{ qrCode: string; qrCodeBase64: string; paymentId: number; orderId: string } | null>(null)
 
   const [hydrated, setHydrated] = useState(false)
-  useEffect(() => setHydrated(true), [])
+  
+  useEffect(() => {
+    setHydrated(true)
+    initMercadoPago(process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY ?? "", {
+      locale: "pt-BR",
+    })
+  }, [])
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix")
 
@@ -93,6 +112,11 @@ export default function CheckoutPage() {
   const [pickupInStore, setPickupInStore] = useState(false)
   const [cepLoading, setCepLoading] = useState(false)
   const [cepError, setCepError] = useState<string | null>(null)
+  
+  // Controle para evitar redirect de carrinho vazio após sucesso
+  const [isRedirecting, setIsRedirecting] = useState(false)
+  // Controle para manter a UI enquanto processa o pedido e limpa o carrinho
+  const [isProcessing, setIsProcessing] = useState(false)
 
   const [form, setForm] = useState({
     fullName: "",
@@ -106,9 +130,41 @@ export default function CheckoutPage() {
     state: "",
     zipCode: "",
     country: "Brasil",
+    orderId: "",
+    cpf: "",
   })
 
-  // pré-preenche com dados do usuário logado, se tiver
+  // Estado para persistir o resumo do pedido mesmo após limpar o carrinho
+  const [orderSummary, setOrderSummary] = useState<{
+    items: typeof items;
+    subtotal: number;
+    shipping: number;
+    total: number;
+  } | null>(null);
+
+  useEffect(() => {
+    // Se ainda não temos um resumo salvo e o carrinho tem itens, atualizamos o resumo
+    if (items.length > 0 && !orderSummary) {
+       // Recalcula totais locais
+       const currentShipping = pickupInStore ? 0 : (selectedShipping?.price ?? 0);
+       const currentTotal = subtotal + currentShipping;
+
+       setOrderSummary({
+         items: items,
+         subtotal: subtotal,
+         shipping: currentShipping,
+         total: currentTotal
+       });
+    }
+  }, [items, subtotal, pickupInStore, selectedShipping, orderSummary]);
+
+  // Use o resumo persistido se disponível (durante processamento/sucesso), senão use o carrinho atual
+  const displayItems = orderSummary?.items ?? items;
+  const displaySubtotal = orderSummary?.subtotal ?? subtotal;
+  // O frete pode mudar se o usuário trocar a opção, então só usamos o persistido se o carrinho estiver vazio (pós-compra)
+  const displayShipping = (items.length === 0 && orderSummary) ? orderSummary.shipping : (pickupInStore ? 0 : (selectedShipping?.price ?? 0));
+  const displayTotal = displaySubtotal + displayShipping;
+
   useEffect(() => {
     if (!user) return
 
@@ -123,10 +179,39 @@ export default function CheckoutPage() {
     }))
   }, [user])
 
+  useEffect(() => {
+    if (!pixData?.orderId || !user) return
+
+    const checkStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/user/orders/${pixData.orderId}`, {
+           credentials: "include"
+        })
+        if (res.ok) {
+          const order = await res.json()
+          console.log("🔍 Status do Pedido:", order.status)
+          
+          if (order.status !== 'Pendente' && order.status !== 'Cancelado') {
+             toast.dismiss()
+             toast.success("Pagamento aprovado! Redirecionando...")
+             router.push(`/payment/success?order_id=${pixData.orderId}&payment_type=pix`)
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao verificar status do Pix:", error)
+      }
+    }
+
+    // Verifica a cada 3 segundos
+    const interval = setInterval(checkStatus, 3000)
+    return () => clearInterval(interval)
+  }, [pixData, user, router, clearCart])
+
   // Busca endereços do usuário
   useEffect(() => {
-    if (!token) {
-      console.log("Checkout: Sem token para buscar endereços")
+    if (authLoading) return
+    if (!user) {
+      console.log("Checkout: Usuário não logado para buscar endereços")
       return
     }
 
@@ -134,10 +219,9 @@ export default function CheckoutPage() {
       try {
         console.log("Checkout: Buscando endereços...")
         setLoadingAddresses(true)
+        setLoadingAddresses(true)
         const res = await fetch(`${API_BASE_URL}/api/profile/addresses`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
         })
 
         if (res.ok) {
@@ -184,7 +268,7 @@ export default function CheckoutPage() {
     }
 
     void fetchAddresses()
-  }, [token])
+  }, [user, authLoading])
 
   const handleSelectAddress = (addr: Endereco) => {
     setSelectedAddressId(addr.id)
@@ -217,13 +301,13 @@ export default function CheckoutPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: token ? `Bearer ${token}` : "",
           },
           body: JSON.stringify({
             cep: cepClean,
             pickupInStore: pickupInStore,
             cartSubtotal: subtotal,
           }),
+          credentials: "include",
         })
 
         if (res.ok) {
@@ -259,7 +343,7 @@ export default function CheckoutPage() {
     }
 
     void calculateShipping()
-  }, [form.zipCode, pickupInStore, subtotal, token])
+  }, [form.zipCode, pickupInStore, subtotal, user])
 
   // ===== CEP helpers =====
 
@@ -365,8 +449,13 @@ export default function CheckoutPage() {
     )
   }
 
+  // Se já tiver dados do PIX, mostra o Modal
+  if (pixData) {
+     // Mantemos o render normal abaixo, e o modal será exibido por cima
+  }
+
   // se não tiver itens, manda pro carrinho
-  if (items.length === 0) {
+  if (items.length === 0 && !isProcessing && !isRedirecting && !pixData) {
     return (
       <>
         <Header />
@@ -386,7 +475,7 @@ export default function CheckoutPage() {
     )
   }
 
-  // ✅ Cálculo real de frete
+  // Cálculo real de frete
   const shipping = pickupInStore ? 0 : (selectedShipping?.price ?? 0)
   const total = subtotal + shipping
 
@@ -425,9 +514,9 @@ export default function CheckoutPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
+        credentials: "include",
       })
 
       if (!res.ok) {
@@ -442,45 +531,44 @@ export default function CheckoutPage() {
     }
   }
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-
-    // Validação: usuário deve estar logado
-    if (!token) {
+  // Função unificada de validação e criação de endereço
+  const validateAndPrepareOrder = async (): Promise<CreateOrderRequest | null> => {
+     // Validação: usuário deve estar logado
+    if (!user) {
       toast.error("Você precisa estar logado para finalizar a compra.")
-      router.push("/login")
-      return
+      // router.push("/login") // Opcional, ou deixa o usuario clicar
+      return null
     }
 
     // Validação: nome completo obrigatório
     if (!form.fullName || form.fullName.trim() === "") {
       toast.error("Por favor, preencha seu nome completo.")
-      return
+      return null
     }
 
     // Validação: telefone obrigatório
     if (!form.phone || sanitizePhone(form.phone).length < 10) {
       toast.error("Por favor, preencha um telefone válido com DDD.")
-      return
+      return null
     }
 
     // Validação: campos de endereço obrigatórios (se não for retirada na loja)
     if (!pickupInStore) {
       if (!form.street || !form.number || !form.neighborhood || !form.city || !form.state || !form.zipCode) {
         toast.error("Por favor, preencha todos os campos obrigatórios do endereço.")
-        return
+        return null
       }
       
       if (sanitizeCep(form.zipCode).length !== 8) {
         toast.error("Por favor, preencha um CEP válido.")
-        return
+        return null
       }
     }
 
     // Validar se frete foi selecionado (exceto se for retirada)
     if (!pickupInStore && !selectedShipping) {
       toast.error("Por favor, selecione uma opção de frete ou marque 'Retirar na loja'.")
-      return
+      return null
     }
 
     // Criar endereço se necessário
@@ -493,51 +581,269 @@ export default function CheckoutPage() {
 
       if (!addressId) {
         toast.error("Erro ao salvar endereço. Tente novamente.")
-        return
+        return null
       }
     }
 
-    // Preparar payload simplificado conforme DTO do backend
-    const orderRequest: CreateOrderRequest = {
+    return {
       shippingAmount: pickupInStore ? 0 : shipping,
       shippingCode: pickupInStore ? "" : (selectedShipping?.code ?? ""),
       shippingName: pickupInStore ? "" : (selectedShipping?.name ?? ""),
       shippingEstimatedDays: pickupInStore ? 0 : (selectedShipping?.estimatedDays ?? 0),
       pickupInStore: pickupInStore,
       shippingAddressId: addressId || "",
+      shippingPhone: sanitizePhone(form.phone),
+    }
+  }
+
+
+  const handleCardSubmit = async (cardFormData: any) => {
+      // 1. Validar e preparar dados do pedido
+      if (!user) return; // Garantir que user existe
+
+      const orderRequest = await validateAndPrepareOrder();
+      if (!orderRequest) return; // Se falhou na validação, para tudo
+
+      // SALVAR RESUMO ANTES DE LIMPAR
+      setOrderSummary({
+        items: items,
+        subtotal: subtotal,
+        shipping: pickupInStore ? 0 : (selectedShipping?.price ?? 0),
+        total: subtotal + (pickupInStore ? 0 : (selectedShipping?.price ?? 0))
+      });
+
+      setIsProcessing(true) // Ativa estado de processamento
+
+      try {
+        toast.loading("Processando pagamento com cartão...")
+
+        // 2. Criar o pedido no Backend (Status: Pending)
+        const orderResponse = await checkout(orderRequest);
+        console.log("Pedido criado para cartão:", orderResponse.orderNumber);
+        
+        // Limpar carrinho no frontend imediatamente após criar o pedido
+        clearCart();
+
+        // 3. Enviar Token para Pagamento
+        const paymentResponse = await fetch(`${API_BASE_URL}/api/user/orders/${orderResponse.orderId}/pay-card`, {
+          method: "POST",
+          headers: {
+              "Content-Type": "application/json",
+          },
+          body: JSON.stringify(cardFormData),
+          credentials: "include",
+        });
+
+        const paymentResult = await paymentResponse.json();
+
+        if (!paymentResponse.ok) {
+          console.error("Erro detalhado do Cartão:", paymentResult);
+          throw new Error(paymentResult.message || JSON.stringify(paymentResult) || "Falha no pagamento com cartão");
+        }
+
+        if (paymentResult.status === 'rejected' || paymentResult.status === 'cancelled') {
+          console.warn("Pagamento Recusado/Cancelado:", paymentResult); 
+          
+          // Traduzir mensagem de erro do Mercado Pago
+          const statusDetail = paymentResult.status_detail || paymentResult.message;
+          let message = "O pagamento foi recusado.";
+
+          switch (statusDetail) {
+              case "cc_rejected_bad_filled_card_number":
+                  message = "Revise o número do cartão.";
+                  break;
+              case "cc_rejected_bad_filled_date":
+                  message = "Revise a data de vencimento.";
+                  break;
+              case "cc_rejected_bad_filled_other":
+                  message = "Revise os dados do cartão.";
+                  break;
+              case "cc_rejected_bad_filled_security_code":
+                  message = "Revise o código de segurança do cartão.";
+                  break;
+              case "cc_rejected_blacklist":
+                  message = "Não pudemos processar seu pagamento.";
+                  break;
+              case "cc_rejected_call_for_authorize":
+                  message = "Você deve autorizar o pagamento com o emissor do cartão.";
+                  break;
+              case "cc_rejected_card_disabled":
+                  message = "Ligue para o emissor do cartão para ativar seu cartão.";
+                  break;
+              case "cc_rejected_card_error":
+                  message = "Não conseguimos processar seu pagamento.";
+                  break;
+              case "cc_rejected_duplicated_payment":
+                  message = "Você já efetuou um pagamento com esse valor. Caso precise pagar novamente, utilize outro cartão ou outra forma de pagamento.";
+                  break;
+              case "cc_rejected_high_risk":
+                  message = "Seu pagamento foi recusado. Escolha outra forma de pagamento.";
+                  break;
+              case "cc_rejected_insufficient_amount":
+                  message = "Seu cartão possui saldo insuficiente.";
+                  break;
+              case "cc_rejected_invalid_installments":
+                  message = "O cartão não processa pagamentos em parcelas.";
+                  break;
+              case "cc_rejected_max_attempts":
+                  message = "Você atingiu o limite de tentativas permitidas.";
+                  break;
+              case "cc_rejected_other_reason":
+                  message = "O emissor do cartão não processou o pagamento.";
+                  break;
+              default:
+                  message = "O pagamento foi recusado. Por favor, tente outra forma de pagamento.";
+                  break;
+          }
+
+          toast.dismiss();
+          router.push(`/payment/failure?order_id=${orderResponse.orderId}&message=${encodeURIComponent(message)}`);
+          return; // Interrompe o fluxo aqui, MANTÉM CARRINHO
+        }
+        console.log("Pagamento Processado com Sucesso:", paymentResult);
+        toast.dismiss();
+
+        // 4. Limpar e Redirecionar APENAS se aprovado ou em análise
+        if (paymentResult.status === 'approved' || paymentResult.status === 'in_process') {
+            setIsRedirecting(true) 
+            // clearCart(); // Removido pois já limpamos na criação do pedido
+        
+            if (paymentResult.status === 'approved') {
+              toast.success("Pagamento aprovado com sucesso! 🎉");
+              router.push(`/payment/success?order_id=${orderResponse.orderId}&collection_id=${paymentResult.paymentId}&status=${paymentResult.status}&payment_type=credit_card`);
+            } else {
+              toast.info("Pagamento em análise. Aguarde a confirmação.");
+              router.push(`/payment/pending?order_id=${orderResponse.orderId}&collection_id=${paymentResult.paymentId}&status=${paymentResult.status}&payment_type=credit_card`);
+            }
+        } else {
+           // Fallback para outros status desconhecidos que não sejam sucesso
+           console.warn("Status desconhecido:", paymentResult.status);
+           const message = "Ocorreu um erro no processamento. Tente novamente.";
+           router.push(`/payment/failure?order_id=${orderResponse.orderId}&message=${encodeURIComponent(message)}`);
+        }
+
+      } catch (error: any) {
+        toast.dismiss();
+        console.error("Erro no fluxo de cartão:", error);
+        toast.error(error.message || "Erro ao processar cartão. Verifique os dados.");
+        // Não damos throw aqui para não quebrar o visual do Brick
+      } finally {
+        // Só desativa o loading se NÃO estiver redirecionando para sucesso
+        // Se estiver redirecionando, deixa o loading ativo até a pagina mudar
+        if (!isRedirecting) {
+           setIsProcessing(false)
+        }
+      }
+  }
+
+// Função auxiliar para máscara de CPF
+const formatCpfMask = (value: string) => {
+  return value
+    .replace(/\D/g, "")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d{1,2})/, "$1-$2")
+    .replace(/(-\d{2})\d+?$/, "$1")
+}
+
+  const handleCpfChange = (value: string) => {
+    setForm((prev) => ({ ...prev, cpf: formatCpfMask(value) }))
+  }
+
+  // Handler para Pagamento Pix (Formulário padrão)
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+
+    // Validar CPF se for PIX
+    if (paymentMethod === "pix") {
+       if (!form.cpf || !/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(form.cpf)) {
+         toast.error("Por favor, preencha um CPF válido para gerar o PIX.")
+         return
+       }
     }
 
+    const orderRequest = await validateAndPrepareOrder();
+    if (!orderRequest) return;
+    
+    // SALVAR RESUMO ANTES DE LIMPAR
+    setOrderSummary({
+      items: items,
+      subtotal: subtotal,
+      shipping: pickupInStore ? 0 : (selectedShipping?.price ?? 0),
+      total: subtotal + (pickupInStore ? 0 : (selectedShipping?.price ?? 0))
+    });
+
+    setIsProcessing(true) // Ativa estado de processamento
+
     try {
-      toast.loading("Processando pedido...")
+      toast.loading("Gerando PIX...")
       
-      const response = await checkout(orderRequest, token)
+      // 1. Criar Pedido (Pendente)
+      const response = await checkout(orderRequest)
+      console.log("Pedido criado para PIX:", response.orderNumber)
+      
+      // Limpar carrinho no frontend imediatamente após criar o pedido
+      clearCart();
+
+      // 2. Processar Pagamento PIX
+      // Usamos o mesmo endpoint de pagar com cartão, mas passando método 'pix'
+      const pixPayload = {
+        token: null,
+        payment_method_id: "pix",
+        installments: 1,
+        issuer_id: null,
+        payer: {
+          email: form.email || "email@teste.com", // Fallback seguro
+          identification: {
+            type: "CPF",
+            number: form.cpf.replace(/\D/g, "") // Remove formatação
+          }
+        }
+      }
+
+      const paymentResponse = await fetch(`${API_BASE_URL}/api/user/orders/${response.orderId}/pay-card`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(pixPayload),
+        credentials: "include",
+      });
+
+      const paymentResult = await paymentResponse.json();
+
+      if (!paymentResponse.ok) {
+        console.error("Erro detalhado do PIX:", paymentResult);
+        throw new Error(paymentResult.message || JSON.stringify(paymentResult) || "Erro ao gerar PIX");
+      }
+
+      console.log("PIX Gerado:", paymentResult);
       
       toast.dismiss()
-      toast.success("Pedido criado com sucesso!")
+      toast.success("PIX gerado com sucesso!")
       
-      console.log("✅ Pedido criado:", response)
+      // 3. Mostrar QR Code na tela (sem redirecionar)
+      setPixData({
+        qrCode: paymentResult.qrCode,
+        qrCodeBase64: paymentResult.qrCodeBase64,
+        paymentId: paymentResult.paymentId,
+        orderId: response.orderId
+      })
       
-      // Limpar carrinho
-      clearCart()
+      // NÃO Limpar carrinho aqui! Esperar pagamento.
+      // clearCart() 
       
-      // ✅ SEMPRE usar initPoint (PRODUÇÃO)
-      const paymentUrl = response.initPoint
-      
-      if (paymentUrl) {
-        window.location.href = paymentUrl
-      } else {
-        // Fallback: redirecionar para página de pedidos
-        router.push(`/minha-conta/pedidos/${response.orderId}`)
-      }
     } catch (err) {
       toast.dismiss()
-      console.error("Erro no checkout:", err)
+      console.error("Erro no checkout PIX:", err)
       
       if (err instanceof Error) {
         toast.error(err.message)
       } else {
         toast.error("Erro ao conectar com o servidor. Tente novamente.")
       }
+    } finally {
+        setIsProcessing(false) // Desativa estado, permitindo renderizar empty state se falhar
     }
   }
 
@@ -562,6 +868,19 @@ export default function CheckoutPage() {
                 <h1 className="text-2xl font-light text-foreground mb-2">
                   Finalizar Compra
                 </h1>
+
+                {/* Badge de Ambiente de Teste */}
+                {isMercadoPagoTest && (
+                  <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-400 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className="text-yellow-700 font-bold text-sm">⚠️ MODO TESTE</span>
+                    </div>
+                    <p className="text-xs text-yellow-700 mt-1">
+                      Você está em ambiente de testes. Use cartões de teste do MercadoPago.
+                    </p>
+                  </div>
+                )}
+
                 <p className="text-sm text-foreground/60 mb-4">
                   Preencha seus dados para concluir o pedido.
                 </p>
@@ -586,6 +905,22 @@ export default function CheckoutPage() {
                           className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                           required
                         />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">
+                          CPF <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={form.cpf}
+                          onChange={(e) => handleCpfChange(e.target.value)}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                          placeholder="000.000.000-00"
+                          maxLength={14}
+                        />
+                         {paymentMethod === "pix" && !form.cpf && (
+                            <p className="text-[10px] text-accent mt-1">Obrigatório para gerar o Pix</p>
+                         )}
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-foreground mb-1">
@@ -809,54 +1144,135 @@ export default function CheckoutPage() {
                     )}
                   </section>
 
+
+
                   {/* Pagamento */}
                   <section className="space-y-4">
                     <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
                       Forma de pagamento
                     </h2>
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Opção Pix */}
                       <button
                         type="button"
                         onClick={() => setPaymentMethod("pix")}
-                        className={`w-full px-4 py-3 rounded-lg border text-sm flex items-center justify-between ${
+                        className={`p-4 rounded-lg border text-left transition-all relative ${
                           paymentMethod === "pix"
-                            ? "border-primary bg-primary/5 text-primary"
-                            : "border-border bg-background text-foreground/80 hover:bg-muted/60"
-                        } transition-colors`}
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "border-border hover:border-primary/50"
+                        }`}
                       >
-                        <span>Pix</span>
-                        <span className="text-xs text-foreground/60">
-                          Mais rápido
-                        </span>
+                         {paymentMethod === "pix" && (
+                          <div className="absolute top-3 right-3 text-primary">
+                            <Check size={18} />
+                          </div>
+                        )}
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                            </svg>
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="font-medium text-foreground text-sm">Pix</h3>
+                            <p className="text-xs text-foreground/60 mt-1">Aprovação imediata</p>
+                            <span className="inline-block mt-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                              Recomendado
+                            </span>
+                          </div>
+                        </div>
                       </button>
+
+                      {/* Opção Cartão */}
                       <button
                         type="button"
                         onClick={() => setPaymentMethod("card")}
-                        className={`w-full px-4 py-3 rounded-lg border text-sm flex items-center justify-between ${
+                        className={`p-4 rounded-lg border text-left transition-all relative ${
                           paymentMethod === "card"
-                            ? "border-primary bg-primary/5 text-primary"
-                            : "border-border bg-background text-foreground/80 hover:bg-muted/60"
-                        } transition-colors`}
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "border-border hover:border-primary/50"
+                        }`}
                       >
-                        <span>Cartão de crédito</span>
-                        <span className="text-xs text-foreground/60">
-                          Em até 12x
-                        </span>
+                        {paymentMethod === "card" && (
+                          <div className="absolute top-3 right-3 text-primary">
+                            <Check size={18} />
+                          </div>
+                        )}
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="font-medium text-foreground text-sm">Cartão de Crédito</h3>
+                            <p className="text-xs text-foreground/60 mt-1">Até 12x no cartão</p>
+                          </div>
+                        </div>
                       </button>
                     </div>
 
-                    <p className="text-xs text-foreground/60">
-                      Depois de confirmar o pedido, você será direcionado para a
-                      tela de pagamento correspondente.
-                    </p>
+                    {/* Área do Brick de Cartão */}
+                    {paymentMethod === "card" && (
+                      <div className="mt-6 p-1 bg-white rounded-lg border border-border">
+                        <CardPayment
+                          initialization={{
+                            amount: (() => {
+                                console.log("🔍 Brick Init - Amount:", total, "Email:", form.email);
+                                return total;
+                            })(), // Valor total do pedido
+                            payer: {
+                              email: form.email,
+                            },
+                          }}
+                          customization={{
+                            paymentMethods: {
+                              minInstallments: 1,
+                              maxInstallments: 12,
+                            },
+                            visual: {
+                              style: {
+                                theme: "default", // 'default' | 'dark' | 'bootstrap' | 'flat'
+                              },
+                              hidePaymentButton: false, // Botão nativo do Brick
+                            },
+                          }}
+                          onSubmit={async (param) => {
+                            console.log("💳 Dados do cartão recebidos (Token gerado):", JSON.stringify(param, null, 2));
+                            
+                            // Dispara o fluxo de criação do pedido + pagamento
+                            await handleCardSubmit(param);
+                          }}
+                          onError={async (error) => {
+                             console.error("❌ Erro no Brick de Cartão:", error);
+                             toast.error("Erro ao processar dados do cartão. Verifique as informações.");
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {paymentMethod === "pix" && (
+                      <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <svg className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                        </svg>
+                        <p className="text-xs text-blue-900">
+                          Ao confirmar, você receberá um <strong>QR Code</strong> para pagamento instantâneo.
+                        </p>
+                      </div>
+                    )}
                   </section>
 
-                  <button
-                    type="submit"
-                    className="w-full bg-primary text-primary-foreground py-3 rounded-lg font-medium hover:bg-primary/90 transition-colors mt-4"
-                  >
-                    Confirmar pedido
-                  </button>
+                  {/* Botão de Confirmar (Apenas se for PIX - Cartão tem botão próprio no Brick) */}
+                  {paymentMethod === "pix" && (
+                    <button
+                      type="submit"
+                      className="w-full bg-primary text-primary-foreground py-3 rounded-lg font-medium hover:bg-primary/90 transition-colors mt-4"
+                    >
+                      Gerar Pix e Finalizar
+                    </button>
+                  )}
                 </form>
               </div>
             </main>
@@ -869,7 +1285,7 @@ export default function CheckoutPage() {
                 </h2>
 
                 <div className="space-y-3 max-h-72 overflow-y-auto pr-1 text-sm">
-                  {items.map((item) => {
+                  {displayItems.map((item) => {
                     const lineTotal = item.price * item.quantity
 
                     return (
@@ -913,19 +1329,17 @@ export default function CheckoutPage() {
                 <div className="space-y-2 border-t border-border pt-4 text-sm">
                   <div className="flex justify-between text-foreground/70">
                     <span>Subtotal</span>
-                    <span>R$ {subtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span>R$ {displaySubtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-foreground/70">
                     <span>Frete</span>
                     <span>
                       {loadingShipping ? (
                         <span className="text-accent">Calculando...</span>
-                      ) : pickupInStore || (selectedShipping && (selectedShipping.isFreeShipping || selectedShipping.price === 0)) ? (
+                      ) : (displayShipping === 0) ? (
                         <span className="text-green-600">Grátis</span>
-                      ) : selectedShipping ? (
-                        `R$ ${shipping.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                       ) : (
-                        <span className="text-orange-600">A calcular</span>
+                        `R$ ${displayShipping.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                       )}
                     </span>
                   </div>
@@ -933,7 +1347,7 @@ export default function CheckoutPage() {
 
                 <div className="flex justify-between text-lg font-medium text-foreground pt-2 border-t border-border/60">
                   <span>Total</span>
-                  <span>R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span>R$ {displayTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
 
                 <p className="text-xs text-foreground/60">
@@ -1013,6 +1427,75 @@ export default function CheckoutPage() {
           </div>
         </div>
       )}
+      {/* Modal do PIX */}
+      <Dialog open={!!pixData} onOpenChange={(open) => {
+          if(!open) {
+             // Redireciona para pedidos ao fechar, pois o pedido já foi criado
+             router.push("/minha-conta/pedidos")
+          }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center flex flex-col items-center gap-4">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">
+                <Check size={24} />
+              </div>
+              Pedido Criado!
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              Escaneie o QR Code abaixo para pagar via Pix.
+            </DialogDescription>
+          </DialogHeader>
+
+          {pixData && (
+            <div className="space-y-6 py-4">
+              {/* QR Code Imagem Base64 */}
+              {pixData.qrCodeBase64 && (
+                <div className="flex justify-center">
+                  <img 
+                    src={`data:image/png;base64,${pixData.qrCodeBase64}`} 
+                    alt="QR Code Pix"
+                    className="w-48 h-48 object-contain"
+                  />
+                </div>
+              )}
+
+              {/* Código Copia e Cola */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-foreground/60 uppercase text-center">Código Copia e Cola</p>
+                <div className="flex gap-2">
+                  <input 
+                    readOnly 
+                    value={pixData.qrCode} 
+                    className="flex-1 bg-muted px-3 py-2 rounded border border-border text-xs font-mono text-foreground/80 truncate"
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(pixData.qrCode)
+                      toast.success("Código copiado!")
+                    }}
+                    className="bg-primary text-primary-foreground p-2 rounded hover:bg-primary/90 transition-colors"
+                    title="Copiar"
+                  >
+                   <Check size={16} /> 
+                  </button>
+                </div>
+              </div>
+
+               <div className="pt-4 border-t border-border">
+                <div className="flex items-center justify-center gap-2 text-sm text-foreground/60 animate-pulse mb-4">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    Aguardando pagamento...
+                </div>
+
+                <p className="text-xs text-center text-foreground/50">
+                  O pagamento é aprovado instantaneamente. A tela atualizará automaticamente.
+                </p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

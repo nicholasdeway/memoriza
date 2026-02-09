@@ -25,7 +25,7 @@ export default function MinhaContaLayout({
   const pathname = usePathname();
   const router = useRouter();
 
-  const { user, token, isLoading } = useAuth();
+  const { user, isLoading } = useAuth();
 
   // garante que estamos no browser antes de tomar decisão
   const [hydrated, setHydrated] = useState(false);
@@ -38,11 +38,11 @@ export default function MinhaContaLayout({
     if (!hydrated) return;
     if (isLoading) return;
 
-    // se não tiver token depois de carregar tudo → manda pro login
-    if (!token) {
+    // se não tiver user depois de carregar tudo → manda pro login
+    if (!user) {
       router.replace("/auth/login");
     }
-  }, [hydrated, isLoading, token, router]);
+  }, [hydrated, isLoading, user, router]);
 
   // enquanto está carregando / hidratando, mostra só um placeholder
   if (!hydrated || isLoading || !user) {

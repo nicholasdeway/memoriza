@@ -10,8 +10,7 @@ import { getEmployeesByGroup, moduleLabels } from "@/lib/employee-mock-data"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 type ApiGroup = {
   id: string
@@ -34,7 +33,7 @@ const mapApiToUserGroup = (api: ApiGroup): UserGroup => ({
 })
 
 export default function GruposPage() {
-  const { token } = useAuth()
+  const { user } = useAuth()
 
   const [groups, setGroups] = useState<UserGroup[]>([])
   const [loading, setLoading] = useState(false)
@@ -49,7 +48,7 @@ export default function GruposPage() {
   }
 
   const fetchGroups = async () => {
-    if (!token) return
+    // if (!user) return
     try {
       setLoading(true)
 
@@ -57,14 +56,14 @@ export default function GruposPage() {
         fetch(`${API_BASE_URL}/api/admin/groups`, {
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
+          credentials: "include",
         }),
         fetch(`${API_BASE_URL}/api/admin/employees`, {
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
+          credentials: "include",
         })
       ])
 
@@ -100,7 +99,7 @@ export default function GruposPage() {
 
   useEffect(() => {
     fetchGroups()
-  }, [token])
+  }, [])
 
   const handleCreateGroup = () => {
     setSelectedGroup(null)
@@ -121,7 +120,7 @@ export default function GruposPage() {
   }
 
   const handleSaveGroup = async (data: GroupFormData) => {
-    if (!token) {
+    if (!user) {
       toast.error("Sessão expirada. Faça login novamente.")
       return
     }
@@ -146,8 +145,8 @@ export default function GruposPage() {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
+        credentials: "include",
         body,
       })
 
@@ -171,7 +170,7 @@ export default function GruposPage() {
   }
 
   const handleToggleStatus = async (group: UserGroup) => {
-    if (!token) {
+    if (!user) {
       toast.error("Sessão expirada. Faça login novamente.")
       return
     }
@@ -196,8 +195,8 @@ export default function GruposPage() {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
+          credentials: "include",
           body: JSON.stringify({
             isActive: !group.is_active,
           }),

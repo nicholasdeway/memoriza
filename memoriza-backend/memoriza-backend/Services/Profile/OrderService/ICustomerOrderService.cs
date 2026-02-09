@@ -1,15 +1,12 @@
 ﻿using memoriza_backend.Models.DTO.User.Orders;
 using memoriza_backend.Helpers;
 using memoriza_backend.Models.DTO.Payments;
+using memoriza_backend.Models.DTO.Profile.Orders;
 
 namespace memoriza_backend.Services.Profile.OrderService
 {
     public interface ICustomerOrderService
     {
-        // ======================================================
-        // ORDERS - LISTAGEM E DETALHE
-        // ======================================================
-
         /// <summary>
         /// Retorna a lista de pedidos do usuário (resumo).
         /// </summary>
@@ -21,11 +18,6 @@ namespace memoriza_backend.Services.Profile.OrderService
         /// </summary>
         Task<OrderDetailForUserResponse?> GetOrderDetailForUserAsync(string userId, Guid orderId);
 
-
-        // ======================================================
-        // CREATE ORDER (APENAS SALVAR)
-        // ======================================================
-
         /// <summary>
         /// Cria um pedido apenas salvando os dados, sem iniciar pagamento.
         /// </summary>
@@ -34,22 +26,20 @@ namespace memoriza_backend.Services.Profile.OrderService
             CreateOrderFromCartRequest request);
 
 
-        // ======================================================
-        // CHECKOUT COMPLETO (Mercado Pago)
-        // ======================================================
 
         /// <summary>
-        /// Cria o pedido, gera preferência no Mercado Pago e
-        /// retorna dados para redirecionamento ao checkout.
+        /// Processa pagamento direto via Checkout Transparente.
         /// </summary>
-        Task<ServiceResult<CheckoutInitResponse>> CheckoutAsync(
-            string userId,
-            CreateOrderFromCartRequest request);
+        Task<ServiceResult<ProcessPaymentResponse>> ProcessPaymentAsync(
+            Guid orderId,
+            ProcessPaymentRequest request);
 
-
-        // ======================================================
-        // REFUND
-        // ======================================================
+        /// <summary>
+        /// Processa pagamento com cartão de crédito via Checkout Transparente.
+        /// </summary>
+        Task<ServiceResult<ProcessPaymentResponse>> ProcessCardPaymentAsync(
+            Guid orderId,
+            CardPaymentRequest request);
 
         /// <summary>
         /// Solicita reembolso para um pedido já entregue.
@@ -57,11 +47,6 @@ namespace memoriza_backend.Services.Profile.OrderService
         Task<ServiceResult<RefundStatusResponse>> RequestRefundAsync(
             string userId,
             RequestRefundRequest request);
-
-
-        // ======================================================
-        // CANCELAMENTO AUTOMÁTICO
-        // ======================================================
 
         /// <summary>
         /// Cancela pedidos pendentes que expiraram (mais de X horas).

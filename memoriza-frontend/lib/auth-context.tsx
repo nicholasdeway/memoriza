@@ -10,20 +10,20 @@ import React,
   useMemo,
 } from "react";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105";
+const API_BASE_URL = "/api-proxy";
 
 type DecodedToken = {
-  id?: string;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  fullName?: string;
-  userGroupId?: string;
-  employeeGroupId?: string;
-  isAdmin?: string | boolean;
-  authProvider?: string;
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  userGroupId: number;
+  employeeGroupId?: string | null;
+  isAdmin: boolean;
+  authProvider: string;
   phone?: string;
+  pictureUrl?: string;
   modules?: string[];
   groupPermissions?: any[];
   [key: string]: unknown;
@@ -33,7 +33,6 @@ type LoginResult = { success: true } | { success: false; error?: string };
 type RegisterResult = { success: true } | { success: false; error?: string };
 
 type AuthContextValue = {
-  token: string | null;
   user: DecodedToken | null;
   isAdmin: boolean;
   login: (identifier: string, password: string) => Promise<LoginResult>;
@@ -45,7 +44,7 @@ type AuthContextValue = {
     confirmPassword: string;
     phone?: string;
   }) => Promise<RegisterResult>;
-  loginWithToken: (jwt: string) => void;
+  checkAuth: () => Promise<void>;
   logout: () => void;
   updateUserFromProfile: (data: {
     firstName?: string;
@@ -59,77 +58,16 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 /* ======================================================
-   Decodificação do JWT (com correção de padding)
-====================================================== */
-function decodeJwt(token: string): DecodedToken | null {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-
-    let base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-
-    // padding
-    const pad = base64.length % 4;
-    if (pad === 2) base64 += "==";
-    else if (pad === 3) base64 += "=";
-
-    // Decodifica Base64 para bytes
-    const binaryString = atob(base64);
-    
-    // Converte bytes para UTF-8 corretamente
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    
-    // Decodifica UTF-8
-    const json = new TextDecoder("utf-8").decode(bytes);
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
-/* ======================================================
-   Normalização do usuário (nome completo / provider)
-====================================================== */
-function normalizeUser(decoded: DecodedToken): DecodedToken {
-  const provider =
-    decoded.authProvider ??
-    (decoded as any).AuthProvider ??
-    (decoded as any).provider ??
-    "Local";
-
-  const normalizedProvider =
-    typeof provider === "string" ? provider.trim() : "Local";
-
-  const firstName = decoded.firstName as string | undefined;
-  const lastName = decoded.lastName as string | undefined;
-
-  let fullName = decoded.fullName as string | undefined;
-  if (!fullName && firstName) {
-    fullName = lastName ? `${firstName} ${lastName}` : firstName;
-  }
-
-  return {
-    ...decoded,
-    authProvider: normalizedProvider || "Local",
-    fullName,
-  };
-}
-
-/* ======================================================
    AuthProvider
 ====================================================== */
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<DecodedToken | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadGroupPermissions = useCallback(
-    async (jwt: string, decoded: DecodedToken) => {
+    async (decoded: DecodedToken) => {
       try {
         // Prioriza employeeGroupId (funcionários) sobre userGroupId
         // Se o usuário tem employeeGroupId, é um funcionário com grupo personalizado
@@ -152,13 +90,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           {
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${jwt}`,
             },
+            credentials: "include", // Envia cookie
           }
         );
 
         if (!res.ok) {
-          console.warn("Não foi possível carregar permissões do grupo:", res.status);
           return;
         }
 
@@ -181,59 +118,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           };
         });
       } catch (err) {
-        console.error("Erro ao carregar permissões do grupo:", err);
+        // Silently handle permission loading errors
       }
     },
     []
   );
 
-  const applyToken = useCallback(
-    (jwt: string) => {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("memoriza_token", jwt);
+  /* ======================================================
+     Função auxiliar para buscar dados do usuário (/me)
+  ====================================================== */
+  const fetchUserProfile = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/Auth/me`, {
+        credentials: "include", // Envia cookie
+      });
+
+      if (!res.ok) {
+        if (res.status === 401) {
+           return null;
+        }
+        throw new Error("Falha ao buscar perfil");
       }
 
-      const decoded = decodeJwt(jwt);
-      if (decoded) {
-        const normalized = normalizeUser(decoded);
-        setToken(jwt);
-        setUser(normalized);
-
-        // carrega permissões do grupo em background
-        void loadGroupPermissions(jwt, normalized);
-      } else {
-        setToken(null);
-        setUser(null);
-      }
-    },
-    [loadGroupPermissions]
-  );
-
-  // Carrega token do localStorage no primeiro render
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const stored = window.localStorage.getItem("memoriza_token");
-    if (stored) {
-      const decoded = decodeJwt(stored);
-      if (decoded) {
-        const normalized = normalizeUser(decoded);
-        setToken(stored);
-        setUser(normalized);
-
-        void loadGroupPermissions(stored, normalized);
-      }
+      const profile = await res.json();
+      return profile as DecodedToken;
+    } catch (error) {
+      console.error("Erro ao buscar perfil do usuário:", error);
+      return null;
     }
-    setIsLoading(false);
-  }, [loadGroupPermissions]);
+  }, []);
 
-  // Usado no callback do Google
-  const loginWithToken = useCallback(
-    (jwt: string) => {
-      applyToken(jwt);
-    },
-    [applyToken]
-  );
+  /* ======================================================
+     Verifica Autenticação (Cookie)
+  ====================================================== */
+  const checkAuth = useCallback(async () => {
+    const profile = await fetchUserProfile();
+    if (profile) {
+      setUser(profile);
+      void loadGroupPermissions(profile);
+    } else {
+      setUser(null);
+    }
+  }, [fetchUserProfile, loadGroupPermissions]);
+
+  // Checa no mount
+  useEffect(() => {
+    const initAuth = async () => {
+      // Limpeza de legado
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("memoriza_token");
+      }
+      await checkAuth();
+      setIsLoading(false);
+    };
+    initAuth();
+  }, [checkAuth]);
 
   /* ======================================================
      LOGIN NORMAL
@@ -245,10 +184,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ identifier, password }),
+          credentials: "include", // Recebe cookie
         });
 
         const data = await response.json();
-        if (!response.ok || !data?.token) {
+        if (!response.ok) {
           return {
             success: false,
             error:
@@ -257,10 +197,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           };
         }
 
-        applyToken(data.token);
+        await checkAuth();
         return { success: true };
       } catch (error) {
-        console.error("Erro ao fazer login:", error);
         return {
           success: false,
           error:
@@ -268,7 +207,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         };
       }
     },
-    [applyToken]
+    [checkAuth]
   );
 
   /* ======================================================
@@ -288,10 +227,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(input),
+          credentials: "include", // Recebe cookie
         });
 
         const data = await response.json();
-        if (!response.ok || !data?.token) {
+        if (!response.ok) {
           return {
             success: false,
             error:
@@ -300,10 +240,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           };
         }
 
-        applyToken(data.token);
+        await checkAuth();
         return { success: true };
       } catch (error) {
-        console.error("Erro ao registrar usuário:", error);
         return {
           success: false,
           error:
@@ -311,17 +250,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         };
       }
     },
-    [applyToken]
+    [checkAuth]
   );
 
   /* ======================================================
      LOGOUT
   ====================================================== */
-  const logout = useCallback(() => {
-    setToken(null);
+  const logout = useCallback(async () => {
+    try {
+        await fetch(`${API_BASE_URL}/api/Auth/logout`, {
+            method: "POST",
+            credentials: "include"
+        });
+    } catch (e) {
+        console.error("Erro ao fazer logout no backend", e);
+    }
     setUser(null);
     if (typeof window !== "undefined") {
-      window.localStorage.removeItem("memoriza_token");
+        window.location.href = "/auth/login"; // Força recarregamento/redirect limpo
     }
   }, []);
 
@@ -352,40 +298,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   /*
-     ADMIN CHECK (1 = comum, 2 = admin) – legado
-     isAdmin = pode acessar área admin.
-     Permissões finas = user.modules
-     
-     funcionários (com employeeGroupId) não são admin,
-     mesmo que tenham permissões para acessar o painel.
+     ADMIN CHECK
   */
   const isAdmin =
     !!user &&
-    (user?.isAdmin === true ||
-      user?.isAdmin === "true" ||
-      user?.userGroupId === "2") &&
-    !user?.employeeGroupId;
+    (user.isAdmin === true || user.userGroupId === 2) &&
+    !user.employeeGroupId;
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      token,
       user,
       isAdmin,
       isLoading,
       login,
       register,
-      loginWithToken,
+      checkAuth,
       logout,
       updateUserFromProfile,
     }),
     [
-      token,
       user,
       isAdmin,
       isLoading,
       login,
       register,
-      loginWithToken,
+      checkAuth,
       logout,
       updateUserFromProfile,
     ]

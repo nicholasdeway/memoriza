@@ -51,20 +51,94 @@ namespace memoriza_backend.Repositories.Profile
 
             const string sqlItems = @"
                 SELECT
-                    id            AS ""Id"",
-                    cart_id       AS ""CartId"",
-                    product_id    AS ""ProductId"",
-                    product_name  AS ""ProductName"",
-                    thumbnail_url AS ""ThumbnailUrl"",
-                    quantity      AS ""Quantity"",
-                    unit_price    AS ""UnitPrice"",
-                    subtotal      AS ""Subtotal""
-                FROM cart_items
-                WHERE cart_id = @CartId;
+                    ci.id            AS ""Id"",
+                    ci.cart_id       AS ""CartId"",
+                    ci.product_id    AS ""ProductId"",
+                    ci.product_name  AS ""ProductName"",
+                    ci.thumbnail_url AS ""ThumbnailUrl"",
+                    ci.quantity      AS ""Quantity"",
+                    ci.unit_price    AS ""UnitPrice"",
+                    ci.subtotal      AS ""Subtotal"",
+                    ci.personalization_text AS ""PersonalizationText"",
+                    ci.size_id       AS ""SizeId"",
+                    ci.color_id      AS ""ColorId"",
+                    ci.size_name     AS ""SizeName"",
+                    ci.color_name    AS ""ColorName"",
+                    -- Current Product Data for Verification
+                    p.price          AS ""CurrentProductPrice"",
+                    p.promotional_price AS ""CurrentProductPromoPrice"",
+                    -- Current Size Data for Verification
+                    ps.price         AS ""CurrentSizePrice"",
+                    ps.promotional_price AS ""CurrentSizePromoPrice""
+                FROM cart_items ci
+                JOIN products p ON ci.product_id = p.id
+                LEFT JOIN product_sizes ps ON ci.size_id = ps.size_id AND ci.product_id = ps.product_id
+                WHERE ci.cart_id = @CartId;
             ";
 
-            var items = await conn.QueryAsync<CartItem>(sqlItems, new { CartId = cart.Id });
-            cart.Items = items.ToList();
+            var rawItems = await conn.QueryAsync(sqlItems, new { CartId = cart.Id });
+            
+            var itemsList = new List<CartItem>();
+            bool cartUpdated = false;
+
+            foreach (var raw in rawItems)
+            {
+                var item = new CartItem
+                {
+                    Id = raw.Id,
+                    CartId = raw.CartId,
+                    ProductId = raw.ProductId,
+                    ProductName = raw.ProductName,
+                    ThumbnailUrl = raw.ThumbnailUrl,
+                    Quantity = raw.Quantity,
+                    UnitPrice = raw.UnitPrice,
+                    Subtotal = raw.Subtotal,
+                    PersonalizationText = raw.PersonalizationText,
+                    SizeId = raw.SizeId,
+                    ColorId = raw.ColorId,
+                    SizeName = raw.SizeName,
+                    ColorName = raw.ColorName
+                };
+
+                decimal currentPrice = raw.CurrentProductPrice;
+                decimal? currentPromo = raw.CurrentProductPromoPrice;
+                
+                if (raw.CurrentSizePrice != null)
+                {
+                    if (raw.CurrentSizePromoPrice != null)
+                        currentPrice = raw.CurrentSizePromoPrice;
+                    else
+                        currentPrice = raw.CurrentSizePrice;
+                }
+                else
+                {
+                    // Fallback to product price
+                    if (currentPromo != null)
+                        currentPrice = currentPromo.Value;
+                }
+
+                // Check for discrepancy
+                if (item.UnitPrice != currentPrice)
+                {
+                    // Update Item
+                    item.UnitPrice = currentPrice;
+                    item.Subtotal = item.UnitPrice * item.Quantity;
+                    
+                    // Update DB asynchronously
+                    const string updateSql = @"
+                        UPDATE cart_items 
+                        SET unit_price = @UnitPrice, 
+                            subtotal = @Subtotal 
+                        WHERE id = @Id;
+                    ";
+                    await conn.ExecuteAsync(updateSql, new { UnitPrice = item.UnitPrice, Subtotal = item.Subtotal, Id = item.Id });
+                    cartUpdated = true;
+                }
+
+                itemsList.Add(item);
+            }
+
+            cart.Items = itemsList;
 
             return cart;
         }
@@ -121,7 +195,12 @@ namespace memoriza_backend.Repositories.Profile
                     thumbnail_url,
                     quantity,
                     unit_price,
-                    subtotal
+                    subtotal,
+                    personalization_text,
+                    size_id,
+                    color_id,
+                    size_name,
+                    color_name
                 )
                 VALUES (
                     @Id,
@@ -131,7 +210,12 @@ namespace memoriza_backend.Repositories.Profile
                     @ThumbnailUrl,
                     @Quantity,
                     @UnitPrice,
-                    @Subtotal
+                    @Subtotal,
+                    @PersonalizationText,
+                    @SizeId,
+                    @ColorId,
+                    @SizeName,
+                    @ColorName
                 );
             ";
 
@@ -228,7 +312,12 @@ namespace memoriza_backend.Repositories.Profile
                 ProductName = i.ProductName,
                 ThumbnailUrl = i.ThumbnailUrl,
                 Quantity = i.Quantity,
-                UnitPrice = i.UnitPrice
+                UnitPrice = i.UnitPrice,
+                PersonalizationText = i.PersonalizationText,
+                SizeId = i.SizeId,
+                ColorId = i.ColorId,
+                SizeName = i.SizeName,
+                ColorName = i.ColorName
                 // Subtotal é calculado pela própria propriedade do DTO
             }).ToList();
 
@@ -255,11 +344,10 @@ namespace memoriza_backend.Repositories.Profile
             var product = await GetProductInfoAsync(request.ProductId);
             if (product == null)
             {
-                // Você pode tratar melhor (ex: exception customizada)
                 throw new ApplicationException("Produto não encontrado.");
             }
 
-            // NOVO: Buscar preço específico do tamanho se fornecido
+            // buscar preço específico do tamanho se fornecido
             decimal finalPrice = product.PromotionalPrice ?? product.Price;
             
             if (request.SizeId.HasValue)
@@ -290,10 +378,15 @@ namespace memoriza_backend.Repositories.Profile
                 CartId = cart.Id,
                 ProductId = product.Id,
                 ProductName = product.Name,
-                ThumbnailUrl = product.ThumbnailUrl, // Imagem primária do produto
+                ThumbnailUrl = product.ThumbnailUrl,
                 Quantity = request.Quantity,
                 UnitPrice = finalPrice,
-                Subtotal = finalPrice * request.Quantity
+                Subtotal = finalPrice * request.Quantity,
+                PersonalizationText = request.PersonalizationText,
+                SizeId = request.SizeId,
+                ColorId = request.ColorId,
+                SizeName = request.SizeName,
+                ColorName = request.ColorName
             };
 
             await AddItemAsync(item);

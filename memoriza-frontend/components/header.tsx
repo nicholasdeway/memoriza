@@ -19,8 +19,7 @@ import { PromoBanner } from "./promo-banner";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105";
+const API_BASE_URL = "/api-proxy";
 
 // Tipos da API (CategoryResponseDto)
 interface CategoryApi {
@@ -85,7 +84,7 @@ export function Header() {
   const [headerAddress, setHeaderAddress] = useState<AddressHeader | null>(null);
   const [addressModalOpen, setAddressModalOpen] = useState(false);
 
-  const { user, token, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const { itemsCount } = useCart();
 
   // animação do ícone do carrinho
@@ -120,20 +119,6 @@ export function Header() {
       });
 
       if (!res.ok) {
-        let message = "";
-        try {
-          message = await res.text();
-        } catch {
-          message = "<não foi possível ler o corpo da resposta>";
-        }
-
-        console.warn(
-          "[Header] Falha ao carregar categorias. Status:",
-          res.status,
-          "- Mensagem (resumida):",
-          message.substring(0, 200), // só um pedaço, pra não poluir
-        );
-
         setCategories([]); // garante estado consistente em caso de erro
         return;
       }
@@ -168,7 +153,7 @@ export function Header() {
 
   // Fetch user address (default)
   useEffect(() => {
-    if (!token) {
+    if (!user) {
       setHeaderAddress(null);
       return;
     }
@@ -176,9 +161,7 @@ export function Header() {
     const fetchAddress = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/api/profile/addresses`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
         });
 
         if (res.ok) {
@@ -205,7 +188,7 @@ export function Header() {
     };
 
     void fetchAddress();
-  }, [token]);
+  }, [user]);
 
   const visibleCategories = categories.slice(0, MAX_VISIBLE_CATEGORIES);
   const hasMoreCategories = categories.length > MAX_VISIBLE_CATEGORIES;
@@ -478,7 +461,7 @@ export function Header() {
       </header>
 
       {/* Barra de categorias abaixo do header (desktop) */}
-      <div className="bg-muted/30 border-b border-border">
+      <div className="bg-white/70 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Wrapper desktop: scroll só nas categorias, dropdown “Mais” fora do overflow */}
           <div className="relative hidden md:flex items-center justify-center py-3">

@@ -27,8 +27,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { usePermissions } from "@/lib/use-permissions"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 const VIEW_MODE_KEY = "adminCoresViewMode"
 
 type ViewMode = "list" | "grid"
@@ -54,7 +53,7 @@ type UpdateColorDto = {
 }
 
 export default function AdminCores() {
-  const { token, isLoading: authLoading } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const { canCreate, canEdit, canDelete } = usePermissions('colors')
 
   const [colors, setColors] = useState<Color[]>([])
@@ -109,14 +108,12 @@ export default function AdminCores() {
   }
 
   const fetchColors = async () => {
-    if (!token) return
+    // if (!user) return
 
     try {
       setLoading(true)
       const res = await fetch(`${API_BASE_URL}/api/colors`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
       })
 
       if (!res.ok) {
@@ -179,7 +176,7 @@ export default function AdminCores() {
   }
 
   const handleSave = async () => {
-    if (!token) {
+    if (!user) {
       toast.error("Sessão expirada. Faça login novamente.")
       return
     }
@@ -214,9 +211,9 @@ export default function AdminCores() {
             method: "PUT",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify(dto),
+            credentials: "include",
           },
         )
 
@@ -245,9 +242,9 @@ export default function AdminCores() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(dto),
+          credentials: "include",
         })
 
         if (!res.ok) {
@@ -292,7 +289,7 @@ export default function AdminCores() {
 
   // confirma exclusão / inativação
   const confirmDeleteColor = async () => {
-    if (!token) {
+    if (!user) {
       toast.error("Sessão expirada. Faça login novamente.")
       return
     }
@@ -303,9 +300,7 @@ export default function AdminCores() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/colors/${colorId}`, {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
       })
 
       if (!res.ok) {
@@ -404,7 +399,7 @@ export default function AdminCores() {
   }
 
   const confirmBulkDelete = async () => {
-    if (!token) {
+    if (!user) {
       toast.error("Sessão expirada. Faça login novamente.")
       return
     }
@@ -428,9 +423,7 @@ export default function AdminCores() {
 
         const res = await fetch(`${API_BASE_URL}/api/colors/${id}`, {
           method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
         })
 
         // Verificar se houve conflito

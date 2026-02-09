@@ -17,9 +17,15 @@ import {
   getBestInstallmentDisplay,
   type InstallmentsResponse 
 } from "@/lib/installment-calculator"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 // ===== Tipos da API =====
 type PageParams = { id: string }
@@ -353,7 +359,7 @@ export default function ProductDetailPage({
     try {
       setIsAdding(true)
 
-      // NOVO: Recalcular preço do tamanho selecionado no momento de adicionar
+      // recalcular preço do tamanho selecionado no momento de adicionar
       let priceToUse = product.preco
       let promoToUse = product.precoPromocional
 
@@ -521,41 +527,9 @@ export default function ProductDetailPage({
                 <h3 className="font-medium text-foreground">
                   Sobre este produto
                 </h3>
-                <p className="text-sm text-foreground/70">
+                <p className="text-sm text-foreground/70 whitespace-pre-wrap">
                   {product.descricao}
                 </p>
-                <ul className="space-y-2 text-sm text-foreground/70">
-                  <li className="flex items-start space-x-2">
-                    <Check
-                      size={16}
-                      className="mt-0.5 flex-shrink-0 text-accent"
-                    />
-                    <span>Material premium de alta qualidade</span>
-                  </li>
-                  {product.personalizavel && (
-                    <li className="flex items-start space-x-2">
-                      <Check
-                        size={16}
-                        className="mt-0.5 flex-shrink-0 text-accent"
-                      />
-                      <span>Completamente customizável e personalizável</span>
-                    </li>
-                  )}
-                  <li className="flex items-start space-x-2">
-                    <Check
-                      size={16}
-                      className="mt-0.5 flex-shrink-0 text-accent"
-                    />
-                    <span>Entrega em até 15 dias úteis</span>
-                  </li>
-                  <li className="flex items-start space-x-2">
-                    <Check
-                      size={16}
-                      className="mt-0.5 flex-shrink-0 text-accent"
-                    />
-                    <span>Garantia de satisfação de 100%</span>
-                  </li>
-                </ul>
               </div>
 
               {/* Opções de Personalização */}
@@ -571,33 +545,41 @@ export default function ProductDetailPage({
                       <label className="block text-sm font-medium text-foreground mb-2">
                         Cor <span className="text-red-500">*</span>
                       </label>
-                      <div className="flex items-center flex-wrap gap-3">
-                        {product.cores.map((color) => {
-                          const isSelected = selectedColorId === color.id
-                          return (
-                            <button
-                              key={color.id}
-                              className={`w-8 h-8 rounded-full border-2 transition-all ${
-                                isSelected
-                                  ? "border-accent ring-2 ring-accent ring-offset-2 ring-offset-background"
-                                  : "border-border hover:border-accent"
-                              }`}
-                              style={{
-                                backgroundColor: color.codigoHex || "#ffffff",
-                              }}
-                              title={color.nome}
-                              type="button"
-                              onClick={() => {
-                                setSelectedColorId(color.id)
-                                setErrors((prev) => ({
-                                  ...prev,
-                                  color: undefined,
-                                }))
-                              }}
-                            />
-                          )
-                        })}
-                      </div>
+                      <Select
+                        value={selectedColorId ? String(selectedColorId) : ""}
+                        onValueChange={(value) => {
+                          setSelectedColorId(value ? Number(value) : null)
+                          setErrors((prev) => ({
+                            ...prev,
+                            color: undefined,
+                          }))
+                        }}
+                      >
+                        <SelectTrigger
+                          className={`w-full ${
+                            errors.color ? "border-red-500" : "border-border"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <SelectValue placeholder="Selecione uma cor" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {product.cores.map((color) => (
+                            <SelectItem key={color.id} value={String(color.id)}>
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-4 h-4 rounded-full border border-border shadow-sm"
+                                  style={{
+                                    backgroundColor: color.codigoHex || "#ffffff",
+                                  }}
+                                />
+                                <span>{color.nome}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       {errors.color && (
                         <p className="mt-1 text-xs text-red-500">
                           {errors.color}
@@ -612,13 +594,9 @@ export default function ProductDetailPage({
                       <label className="block text-sm font-medium text-foreground mb-2">
                         Tamanho <span className="text-red-500">*</span>
                       </label>
-                      <select
-                        className={`w-full px-3 py-2 border rounded-lg bg-background text-foreground text-sm ${
-                          errors.size ? "border-red-500" : "border-border"
-                        }`}
-                        value={selectedSizeId ?? ""}
-                        onChange={(e) => {
-                          const value = e.target.value
+                      <Select
+                        value={selectedSizeId ? String(selectedSizeId) : ""}
+                        onValueChange={(value) => {
                           setSelectedSizeId(value ? Number(value) : null)
                           setErrors((prev) => ({
                             ...prev,
@@ -626,13 +604,21 @@ export default function ProductDetailPage({
                           }))
                         }}
                       >
-                        <option value="">Selecione um tamanho</option>
-                        {product.tamanhos.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.nome}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger
+                          className={`w-full ${
+                            errors.size ? "border-red-500" : "border-border"
+                          }`}
+                        >
+                          <SelectValue placeholder="Selecione um tamanho" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {product.tamanhos.map((t) => (
+                            <SelectItem key={t.id} value={String(t.id)}>
+                              {t.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       {errors.size && (
                         <p className="mt-1 text-xs text-red-500">
                           {errors.size}

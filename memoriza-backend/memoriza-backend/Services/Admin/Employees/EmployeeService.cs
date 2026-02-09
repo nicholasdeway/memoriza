@@ -29,16 +29,16 @@ namespace memoriza_backend.Services.Admin.Employees
         }
 
         // DETALHE
-        public async Task<EmployeeResponseDto?> GetByIdAsync(Guid id)
+        public async Task<EmployeeDetailDto?> GetByIdAsync(Guid id)
         {
             var employee = await _employeeRepository.GetByIdAsync(id);
-            return employee is null ? null : MapToDto(employee);
+            return employee is null ? null : MapToDetailDto(employee);
         }
 
         // CREATE
         public async Task<Guid> CreateAsync(EmployeeFormDto dto)
         {
-            // ===== Validações básicas =====
+            // Validações básicas
             if (string.IsNullOrWhiteSpace(dto.Name) || dto.Name.Trim().Length < 2)
                 throw new ApplicationException("Nome deve ter pelo menos 2 caracteres.");
 
@@ -73,14 +73,14 @@ namespace memoriza_backend.Services.Admin.Employees
                     throw new ApplicationException("Já existe um funcionário com esse CPF.");
             }
 
-            // ===== Normalização =====
+            // Normalização
             var firstName = NameFormatter.NormalizeName(dto.Name);
             var lastName = NameFormatter.NormalizeName(dto.LastName);
             var emailLower = dto.Email.Trim().ToLowerInvariant();
 
             var hashedPassword = BCrypt.Net.BCrypt.HashPassword(dto.Password);
 
-            // ===== Cria User (tabela users) =====
+            // Cria User (tabela users)
             var user = new User
             {
                 FirstName = firstName,
@@ -98,13 +98,13 @@ namespace memoriza_backend.Services.Admin.Employees
                 // Funcionários precisam ser Admin para acessar o painel
                 // Permissões granulares vêm do EmployeeGroupId
                 UserGroupId = (int)UserGroupType.Admin,
-                EmployeeGroupId = dto.GroupId,  // ← Grupo personalizado com permissões
+                EmployeeGroupId = dto.GroupId,  // grupo personalizado com permissões
                 IsActive = dto.Status == "active"
             };
 
             user = await _userRepository.CreateAsync(user);
 
-            // ===== Cria Employee (tabela employees) =====
+            // Cria Employee (tabela employees)
             var employeeId = await _employeeRepository.CreateAsync(
                 user.Id,
                 dto.GroupId,
@@ -123,7 +123,7 @@ namespace memoriza_backend.Services.Admin.Employees
             if (existing is null)
                 throw new ApplicationException("Funcionário não encontrado.");
 
-            // ===== Validações básicas =====
+            // Validações básicas
             if (string.IsNullOrWhiteSpace(dto.Name) || dto.Name.Trim().Length < 2)
                 throw new ApplicationException("Nome deve ter pelo menos 2 caracteres.");
 
@@ -155,7 +155,7 @@ namespace memoriza_backend.Services.Admin.Employees
                     throw new ApplicationException("Já existe um funcionário com esse CPF.");
             }
 
-            // ===== Atualiza User =====
+            // Atualiza User
             var user = userByEmail?.Id == existing.UserId
                 ? userByEmail!
                 : await _userRepository.GetByIdAsync(existing.UserId)
@@ -184,7 +184,7 @@ namespace memoriza_backend.Services.Admin.Employees
                 await _userRepository.UpdateAsync(user);
             }
 
-            // ===== Atualiza Employee =====
+            // Atualiza Employee
             await _employeeRepository.UpdateAsync(
                 id,
                 dto.GroupId,
@@ -217,7 +217,7 @@ namespace memoriza_backend.Services.Admin.Employees
             }
         }
 
-        // ===== Map =====
+        // Map
         private static EmployeeResponseDto MapToDto(AdminEmployee e)
         {
             return new EmployeeResponseDto
@@ -227,7 +227,27 @@ namespace memoriza_backend.Services.Admin.Employees
                 LastName = e.LastName,
                 Email = e.Email,
                 Phone = e.Phone,
-                Cpf = e.Cpf,
+
+                GroupId = e.GroupId,
+                GroupName = e.GroupName,
+                HireDate = e.HireDate,
+                Status = e.Status,
+                CreatedAt = e.CreatedAt,
+                UpdatedAt = e.UpdatedAt
+            };
+        }
+
+        private static EmployeeDetailDto MapToDetailDto(AdminEmployee e)
+        {
+            return new EmployeeDetailDto
+            {
+                Id = e.Id,
+                Name = e.FirstName,
+                LastName = e.LastName,
+                Email = e.Email,
+                Phone = e.Phone,
+                Cpf = e.Cpf, // Inclui CPF
+
                 GroupId = e.GroupId,
                 GroupName = e.GroupName,
                 HireDate = e.HireDate,
