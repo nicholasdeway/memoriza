@@ -21,8 +21,7 @@ import {
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 // Tipo da API para Employee (camelCase)
 type ApiEmployee = {
@@ -47,7 +46,7 @@ const mapApiToEmployee = (api: ApiEmployee): Employee => ({
   last_name: api.lastName,
   email: api.email,
   phone: api.phone,
-  cpf: api.cpf,
+  // cpf removed
   group_id: api.groupId,
   group_name: api.groupName,
   hire_date: new Date(api.hireDate),
@@ -57,7 +56,7 @@ const mapApiToEmployee = (api: ApiEmployee): Employee => ({
 })
 
 export default function LogsPage() {
-  const { token } = useAuth()
+  const { user } = useAuth()
 
   const [logs, setLogs] = useState<AccessLog[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -71,11 +70,11 @@ export default function LogsPage() {
     let isCancelled = false
 
     const fetchEmployees = async () => {
-      if (!token) return
+      // if (!user) return
 
       try {
         const response = await fetch(`${API_BASE_URL}/api/admin/employees`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         })
 
         if (!response.ok) {
@@ -102,18 +101,18 @@ export default function LogsPage() {
     return () => {
       isCancelled = true
     }
-  }, [token])
+  }, [])
 
   // Carregar logs do backend
   useEffect(() => {
     let isCancelled = false
 
     const fetchLogs = async () => {
-      if (!token) return
+      // if (!user) return
 
       try {
         const response = await fetch(`${API_BASE_URL}/api/admin/employee-logs`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         })
 
         if (!response.ok) {
@@ -151,7 +150,7 @@ export default function LogsPage() {
     return () => {
       isCancelled = true
     }
-  }, [token])
+  }, [])
 
   // Filtrar logs
   const filteredLogs = useMemo(() => {

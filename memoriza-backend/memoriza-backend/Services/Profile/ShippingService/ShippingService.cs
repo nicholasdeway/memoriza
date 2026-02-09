@@ -49,7 +49,7 @@ namespace memoriza_backend.Services.Profile.ShippingService
             if (option == null)
                 return null;
 
-            // ✅ Calcular frete grátis baseado no threshold da região
+            // Calcular frete grátis baseado no threshold da região
             bool isFreeShipping = false;
             decimal threshold = 0m;
 
@@ -68,12 +68,12 @@ namespace memoriza_backend.Services.Profile.ShippingService
                 Options = new List<ShippingOptionDto> { option },
                 FreeShippingEnabled = threshold > 0,
                 FreeShippingThreshold = threshold,
-                IsFreeShipping = isFreeShipping // ✅ Calculado corretamente
+                IsFreeShipping = isFreeShipping
             };
         }
 
         /// <summary>
-        /// ✅ VALIDAÇÃO DE SEGURANÇA: Recalcula frete no servidor durante checkout
+        /// Validação de segurança: Recalcula frete no servidor durante checkout
         /// </summary>
         public async Task<(bool IsValid, string? ErrorMessage, decimal ExpectedAmount)> ValidateShippingForCheckoutAsync(
             string cep,

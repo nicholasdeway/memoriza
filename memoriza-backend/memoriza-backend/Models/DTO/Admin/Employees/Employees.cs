@@ -12,7 +12,7 @@ namespace memoriza_backend.Models.DTO.Admin.Employees
         public string LastName { get; set; } = null!;
         public string Email { get; set; } = null!;
         public string Phone { get; set; } = null!;
-        public string? Cpf { get; set; }
+
 
         // Grupo
         public Guid GroupId { get; set; }
@@ -25,6 +25,11 @@ namespace memoriza_backend.Models.DTO.Admin.Employees
         // Auditoria
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+    }
+
+    public class EmployeeDetailDto : EmployeeResponseDto
+    {
+        public string? Cpf { get; set; }
     }
 
     // Dados que vêm do formulário (create/update)

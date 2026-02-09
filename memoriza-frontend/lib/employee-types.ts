@@ -62,6 +62,7 @@ export interface Employee {
     phone: string
     cpf?: string
 
+
     // Dados Profissionais
     group_id: string
     group_name?: string // denormalizado para facilitar exibição

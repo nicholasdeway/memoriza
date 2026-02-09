@@ -6,17 +6,14 @@ import type {
     RemoveCartItemRequest,
 } from "@/types/cart"
 
-const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy";
 
 /**
  * Busca o carrinho do usuário logado
  */
-export async function getCart(token: string): Promise<CartSummaryResponse> {
+export async function getCart(): Promise<CartSummaryResponse> {
     const res = await fetch(`${API_BASE_URL}/api/user/cart`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
     })
 
     if (!res.ok) {
@@ -30,16 +27,15 @@ export async function getCart(token: string): Promise<CartSummaryResponse> {
  * Adiciona um item ao carrinho
  */
 export async function addCartItem(
-    request: AddCartItemRequest,
-    token: string
+    request: AddCartItemRequest
 ): Promise<CartSummaryResponse> {
     const res = await fetch(`${API_BASE_URL}/api/user/cart/items`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(request),
+        credentials: "include",
     })
 
     if (!res.ok) {
@@ -64,16 +60,15 @@ export async function addCartItem(
  * Atualiza a quantidade de um item no carrinho
  */
 export async function updateCartItemQuantity(
-    request: UpdateCartItemQuantityRequest,
-    token: string
+    request: UpdateCartItemQuantityRequest
 ): Promise<CartSummaryResponse> {
     const res = await fetch(`${API_BASE_URL}/api/user/cart/items`, {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(request),
+        credentials: "include",
     })
 
     if (!res.ok) {
@@ -87,16 +82,15 @@ export async function updateCartItemQuantity(
  * Remove um item do carrinho
  */
 export async function removeCartItem(
-    request: RemoveCartItemRequest,
-    token: string
+    request: RemoveCartItemRequest
 ): Promise<CartSummaryResponse> {
     const res = await fetch(`${API_BASE_URL}/api/user/cart/items`, {
         method: "DELETE",
         headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(request),
+        credentials: "include",
     })
 
     if (!res.ok) {
@@ -109,19 +103,18 @@ export async function removeCartItem(
 /**
  * Limpa todo o carrinho
  */
-export async function clearCart(token: string): Promise<CartSummaryResponse> {
+export async function clearCart(): Promise<CartSummaryResponse> {
     const res = await fetch(`${API_BASE_URL}/api/user/cart/clear`, {
         method: "DELETE",
         headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ confirm: true }),
+        credentials: "include",
     })
 
     if (!res.ok) {
         const errorText = await res.text().catch(() => "Erro desconhecido")
-        console.error("Erro ao limpar carrinho:", errorText)
         throw new Error("Não foi possível limpar carrinho.")
     }
 

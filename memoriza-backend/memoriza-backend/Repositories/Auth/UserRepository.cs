@@ -42,7 +42,7 @@ namespace memoriza_backend.Repositories.Auth
                     last_login_at           AS ""LastLoginAt"",
                     is_active               AS ""IsActive""
                 FROM users
-                WHERE email = @Email;
+                WHERE LOWER(email) = LOWER(@Email);
             ";
 
             await using var connection = new NpgsqlConnection(_connectionString);

@@ -36,5 +36,11 @@ namespace memoriza_backend.Models.DTO.User.Orders
         /// ID do endereço de entrega escolhido pelo usuário.
         /// </summary>
         public Guid ShippingAddressId { get; set; }
+        
+        /// <summary>
+        /// Telefone de contato para entrega (preenchido no checkout).
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("shippingPhone")]
+        public string? ShippingPhone { get; set; }
     }
 }

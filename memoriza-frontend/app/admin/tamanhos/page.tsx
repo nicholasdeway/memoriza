@@ -28,8 +28,7 @@ import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 import { usePermissions } from "@/lib/use-permissions"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 type ViewMode = "list" | "grid"
 const VIEW_MODE_KEY = "adminTamanhosViewMode"
@@ -58,7 +57,7 @@ interface Size {
 }
 
 export default function AdminTamanhos() {
-  const { token, isLoading: authLoading } = useAuth()
+  const { user } = useAuth()
   const { canCreate, canEdit, canDelete } = usePermissions('sizes')
 
   const [sizes, setSizes] = useState<Size[]>([])
@@ -112,17 +111,7 @@ export default function AdminTamanhos() {
     count: 0,
   })
 
-  const buildAuthHeaders = (
-    extra?: Record<string, string>,
-  ): Record<string, string> => {
-    const headers: Record<string, string> = { ...(extra ?? {}) }
 
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`
-    }
-
-    return headers
-  }
 
   const mapApiToSize = (s: SizeApi): Size => ({
     id: s.id,
@@ -137,7 +126,7 @@ export default function AdminTamanhos() {
       setLoading(true)
       const sizeRes = await fetch(`${API_BASE_URL}/api/sizes`, {
         cache: "no-store",
-        headers: buildAuthHeaders(),
+        credentials: "include", // Envia cookie
       })
 
       if (!sizeRes.ok) {
@@ -163,7 +152,7 @@ export default function AdminTamanhos() {
   const fetchProductCounts = async () => {
     try {
       const prodRes = await fetch(`${API_BASE_URL}/api/products`, {
-        headers: buildAuthHeaders(),
+        credentials: "include",
         cache: "no-store",
       })
 
@@ -191,9 +180,11 @@ export default function AdminTamanhos() {
   }
 
   useEffect(() => {
-    if (authLoading) return
-    void fetchSizesList()
-  }, [authLoading])
+    // Carrega apenas se tiver permissão (admin/funcionario)
+    if (user) {
+      void fetchSizesList()
+    }
+  }, [user])
 
   // Filtro
   const filteredSizes = sizes.filter((s) =>
@@ -263,9 +254,10 @@ export default function AdminTamanhos() {
           `${API_BASE_URL}/api/sizes/${editingSize.id}`,
           {
             method: "PUT",
-            headers: buildAuthHeaders({
+            headers: {
               "Content-Type": "application/json",
-            }),
+            },
+            credentials: "include",
             body: JSON.stringify(payloadUpdate),
           },
         )
@@ -280,9 +272,10 @@ export default function AdminTamanhos() {
       } else {
         const res = await fetch(`${API_BASE_URL}/api/sizes`, {
           method: "POST",
-          headers: buildAuthHeaders({
+          headers: {
             "Content-Type": "application/json",
-          }),
+          },
+          credentials: "include",
           body: JSON.stringify(payloadCreate),
         })
 
@@ -330,7 +323,7 @@ export default function AdminTamanhos() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/sizes/${sizeId}`, {
         method: "DELETE",
-        headers: buildAuthHeaders(),
+        credentials: "include",
       })
 
       if (!res.ok && res.status !== 204) {
@@ -445,7 +438,7 @@ export default function AdminTamanhos() {
 
         const res = await fetch(`${API_BASE_URL}/api/sizes/${id}`, {
           method: "DELETE",
-          headers: buildAuthHeaders(),
+          credentials: "include",
         })
 
         if (!res.ok && res.status !== 204) {
@@ -505,9 +498,10 @@ export default function AdminTamanhos() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/sizes/${id}`, {
         method: "PUT",
-        headers: buildAuthHeaders({
+        headers: {
           "Content-Type": "application/json",
-        }),
+        },
+        credentials: "include",
         body: JSON.stringify(payloadUpdate),
       })
 

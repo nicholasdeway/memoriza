@@ -34,8 +34,7 @@ import Image from "next/image"
 import { type CarouselTemplateType, type CarouselItem } from "@/types/carousel"
 import { usePermissions } from "@/lib/use-permissions"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 const CAROUSEL_API_URL = `${API_BASE_URL}/api/carousel-items`
 
@@ -58,7 +57,7 @@ const TEMPLATE_LABELS: Record<CarouselTemplateType, string> = {
 }
 
 export default function AdminCarrossel() {
-  const { token, isLoading: authLoading } = useAuth()
+  const { user } = useAuth()
   const { canCreate, canEdit, canDelete } = usePermissions('carousel')
 
   const [items, setItems] = useState<CarouselItem[]>([])
@@ -84,19 +83,13 @@ export default function AdminCarrossel() {
     id: string | null
   }>({ open: false, id: null })
 
-  const buildAuthHeaders = () => {
-    const headers: Record<string, string> = {}
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`
-    }
-    return headers
-  }
+
 
   const fetchItems = async () => {
     setIsLoading(true)
     try {
       const res = await fetch(CAROUSEL_API_URL, {
-        headers: buildAuthHeaders(),
+        credentials: "include", // Envia cookie
       })
 
       if (!res.ok) {
@@ -132,10 +125,11 @@ export default function AdminCarrossel() {
   }
 
   useEffect(() => {
-    if (!authLoading) {
+    // Carrega apenas se tiver permissão (admin/funcionario)
+    if (user) {
       fetchItems()
     }
-  }, [authLoading])
+  }, [user])
 
   const handleOpenModal = (item?: CarouselItem) => {
     if (item) {
@@ -225,7 +219,7 @@ export default function AdminCarrossel() {
 
       const res = await fetch(url, {
         method,
-        headers: buildAuthHeaders(),
+        credentials: "include",
         body: fd,
       })
 
@@ -263,7 +257,7 @@ export default function AdminCarrossel() {
     try {
       const res = await fetch(`${CAROUSEL_API_URL}/${deleteDialog.id}`, {
         method: "DELETE",
-        headers: buildAuthHeaders(),
+        credentials: "include",
       })
 
       if (!res.ok) {
@@ -311,9 +305,9 @@ export default function AdminCarrossel() {
       const res = await fetch(`${CAROUSEL_API_URL}/reorder`, {
         method: "POST",
         headers: {
-          ...buildAuthHeaders(),
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify(reorderPayload),
       })
 
@@ -563,6 +557,16 @@ export default function AdminCarrossel() {
                   Ao escolher <strong>Imagem Completa</strong>, os campos de
                   texto ficam opcionais e são desabilitados.
                 </p>
+                {formData.templateType === "full_image" && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs text-blue-900 font-medium mb-1">
+                      💡 Resolução Recomendada
+                    </p>
+                    <p className="text-xs text-blue-800">
+                      Para melhor qualidade, use imagens com <strong>1920x500 pixels</strong> (proporção ~3.8:1)
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>

@@ -7,19 +7,14 @@ import type {
     RefundStatusResponse,
 } from "@/types/orders"
 
-const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy";
 
 /**
  * Busca todos os pedidos do usuário logado
  */
-export async function getMyOrders(
-    token: string
-): Promise<OrderSummaryResponse[]> {
+export async function getMyOrders(): Promise<OrderSummaryResponse[]> {
     const res = await fetch(`${API_BASE_URL}/api/user/orders`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
     })
 
     if (!res.ok) {
@@ -33,13 +28,10 @@ export async function getMyOrders(
  * Busca detalhes de um pedido específico
  */
 export async function getOrderDetail(
-    orderId: string,
-    token: string
+    orderId: string
 ): Promise<OrderDetailResponse> {
     const res = await fetch(`${API_BASE_URL}/api/user/orders/${orderId}`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
     })
 
     if (!res.ok) {
@@ -56,25 +48,17 @@ export async function getOrderDetail(
  * Realiza checkout e cria pedido com integração Mercado Pago
  */
 export async function checkout(
-    request: CreateOrderRequest,
-    token: string
+    request: CreateOrderRequest
 ): Promise<CheckoutInitResponse> {
-    console.log("🚀 Checkout request payload:", JSON.stringify(request, null, 2))
-    console.log("🔑 Token presente:", token ? "Sim" : "Não")
-    console.log("🔑 Token (primeiros 20 chars):", token?.substring(0, 20))
-    console.log("🌐 API URL:", `${API_BASE_URL}/api/user/orders/checkout`)
 
     const res = await fetch(`${API_BASE_URL}/api/user/orders/checkout`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(request),
+        credentials: "include",
     })
-
-    console.log("📡 Response status:", res.status)
-    console.log("📡 Response headers:", Object.fromEntries(res.headers.entries()))
 
     const contentType = res.headers.get("content-type") || ""
 
@@ -85,7 +69,6 @@ export async function checkout(
         try {
             if (contentType.includes("application/json")) {
                 const errorData = await res.json().catch(() => null)
-                console.error("❌ Checkout error (JSON):", errorData)
 
                 if (errorData && typeof errorData === "object") {
                     // array de erros
@@ -109,11 +92,10 @@ export async function checkout(
             } else {
                 // 🔥 Aqui cobre o caso atual: text/plain
                 const text = await res.text().catch(() => "")
-                console.error("❌ Checkout error (texto):", text)
                 if (text) errorMessage = text
             }
         } catch (parseErr) {
-            console.error("❌ Erro ao ler corpo de erro:", parseErr)
+            // Silently handle parse errors
         }
 
         throw new Error(errorMessage)
@@ -129,8 +111,7 @@ export async function checkout(
  */
 export async function requestRefund(
     orderId: string,
-    reason: string,
-    token: string
+    reason: string
 ): Promise<RefundStatusResponse> {
     const request: RefundRequest = {
         orderId,
@@ -141,9 +122,9 @@ export async function requestRefund(
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(request),
+        credentials: "include",
     })
 
     if (!res.ok) {
@@ -159,6 +140,65 @@ export async function requestRefund(
         }
 
         throw new Error("Não foi possível solicitar o reembolso. Tente novamente.")
+    }
+
+    return res.json()
+}
+
+/**
+ * Processa pagamento direto (Checkout Transparente)
+ */
+export async function processPayment(
+    orderId: string,
+    request: import("@/types/orders").ProcessPaymentRequest
+): Promise<import("@/types/orders").ProcessPaymentResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/user/orders/${orderId}/process-payment`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+        credentials: "include",
+    })
+
+    const contentType = res.headers.get("content-type") || ""
+
+    if (!res.ok) {
+        let errorMessage = `Erro ${res.status}: Não foi possível processar o pagamento.`
+
+        try {
+            if (contentType.includes("application/json")) {
+                const errorData = await res.json().catch(() => null)
+
+                if (errorData && typeof errorData === "object") {
+                    // Array de erros
+                    if (Array.isArray(errorData)) {
+                        errorMessage = errorData.join(", ")
+                    }
+                    // { message, error }
+                    else if (errorData.message || errorData.error) {
+                        errorMessage = errorData.message || errorData.error
+                    }
+                    // { errors: { campo: [...] } } - Validation errors
+                    else if (errorData.errors) {
+                        const messages = Object.values(errorData.errors).flat() as string[]
+                        errorMessage = messages.join(", ")
+                    }
+                    // ProblemDetails
+                    else if (errorData.title) {
+                        errorMessage = errorData.title
+                    }
+                }
+            } else {
+                // Plain text response
+                const text = await res.text().catch(() => "")
+                if (text) errorMessage = text
+            }
+        } catch (parseErr) {
+            console.error("Error parsing error response:", parseErr)
+        }
+
+        throw new Error(errorMessage)
     }
 
     return res.json()

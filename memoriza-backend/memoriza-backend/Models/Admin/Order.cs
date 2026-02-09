@@ -13,6 +13,12 @@ namespace memoriza_backend.Models.Admin
         public int Quantity { get; set; }
 
         public decimal Subtotal { get; set; }
+
+        public string? PersonalizationText { get; set; }
+        public int? SizeId { get; set; }
+        public int? ColorId { get; set; }
+        public string? SizeName { get; set; }
+        public string? ColorName { get; set; }
     }
 
     public class OrderStatusHistory

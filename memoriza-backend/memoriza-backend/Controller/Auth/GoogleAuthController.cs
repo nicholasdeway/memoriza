@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 using memoriza_backend.Models.Authentication;
 using memoriza_backend.Services.Auth;
@@ -88,24 +89,53 @@ namespace memoriza_backend.Controllers.Auth
 
                 var finalReturnUrl = string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl;
 
-                // monta URL para /auth/google/callback no frontend
-                // FIX: Redirect to /auth/google/callback instead of /google/callback
-                var redirectUrl = QueryHelpers.AddQueryString(
-                    $"{_frontendBase}/auth/google/callback",
+                // Em vez de setar cookie e redirecionar direto para o frontend,
+                // redirecionamos via PROXY para garantir que o cookie seja setado no domínio do frontend (localhost:3000)
+                var finishUrl = QueryHelpers.AddQueryString(
+                    $"{_frontendBase}/api-proxy/api/auth/google/finish-login",
                     new Dictionary<string, string?>
                     {
                         ["token"] = token,
                         ["returnUrl"] = finalReturnUrl
                     });
 
-                return Redirect(redirectUrl);
+                return Redirect(finishUrl);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erro ao processar Callback do Google.");
-                // FIX: Redirect to /auth/login instead of /auth
                 return Redirect($"{_frontendBase}/auth/login?googleError=server_error");
             }
+        }
+
+        // GET /api/auth/google/finish-login?token=...&returnUrl=...
+        // Este endpoint DEVE ser chamado via Proxy (/api-proxy) para o navegador aceitar o cookie como Same-Origin
+        [HttpGet("finish-login")]
+        [AllowAnonymous]
+        public IActionResult FinishLogin([FromQuery] string token, [FromQuery] string? returnUrl = null)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+                return BadRequest("Token is required");
+
+            SetTokenCookie(token);
+
+            var finalReturnUrl = string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl;
+            
+            // Agora sim, redireciona para a página de callback do frontend que verifica o login
+            return Redirect($"{_frontendBase}/auth/google/callback?returnUrl={finalReturnUrl}");
+        }
+
+        private void SetTokenCookie(string token)
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true, // Habilitar em produção e dev (com https)
+                SameSite = SameSiteMode.None, // Requisito para cross-site (3000 -> 7105)
+                Expires = DateTime.UtcNow.AddMinutes(480),
+                IsEssential = true
+            };
+            Response.Cookies.Append("memoriza_token", token, cookieOptions);
         }
 
         // ========= Helpers =========

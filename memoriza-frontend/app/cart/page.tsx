@@ -11,7 +11,7 @@ import { WhatsAppButton } from "@/components/whatsapp-button"
 import { useCart } from "@/lib/cart-context"
 import { useAuth } from "@/lib/auth-context"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 interface ShippingOption {
   code: string
@@ -28,7 +28,7 @@ function formatCurrency(value: number): string {
 
 export default function CartPage() {
   const { items, subtotal, updateQuantity, removeItem } = useCart()
-  const { token } = useAuth()
+  const { user } = useAuth()
 
   const [shippingOption, setShippingOption] = useState<ShippingOption | null>(null)
   const [loadingShipping, setLoadingShipping] = useState(false)
@@ -37,7 +37,7 @@ export default function CartPage() {
 
   // Calcular frete automaticamente baseado no endereço principal
   useEffect(() => {
-    if (!token) {
+    if (!user) {
       setShippingOption(null)
       setShippingError("Faça login para calcular o frete")
       setHasDefaultAddress(false)
@@ -57,7 +57,7 @@ export default function CartPage() {
       try {
         // Buscar endereço principal
         const addressRes = await fetch(`${API_BASE_URL}/api/profile/addresses`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         })
 
         if (!addressRes.ok) {
@@ -84,13 +84,13 @@ export default function CartPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             cep: defaultAddress.zipCode.replace(/\D/g, ""),
             pickupInStore: false,
             cartSubtotal: subtotal,
           }),
+          credentials: "include",
         })
 
         if (shippingRes.ok) {
@@ -113,7 +113,7 @@ export default function CartPage() {
     }
 
     void calculateShipping()
-  }, [token, subtotal])
+  }, [user, subtotal])
 
   const shipping = shippingOption?.isFreeShipping ? 0 : (shippingOption?.price ?? 0)
   const total = subtotal + shipping

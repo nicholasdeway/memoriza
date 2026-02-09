@@ -27,8 +27,8 @@ namespace memoriza_backend.Services.BackgroundJobs
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("🚀 OrderCancellationBackgroundService iniciado");
-            _logger.LogInformation($"⏰ Verificando pedidos expirados a cada {_checkInterval.TotalMinutes} minutos");
+            _logger.LogInformation("OrderCancellationBackgroundService iniciado");
+            _logger.LogInformation($"Verificando pedidos expirados a cada {_checkInterval.TotalMinutes} minutos");
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -38,14 +38,14 @@ namespace memoriza_backend.Services.BackgroundJobs
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "❌ Erro ao processar cancelamento de pedidos expirados");
+                    _logger.LogError(ex, "Erro ao processar cancelamento de pedidos expirados");
                 }
 
                 // Aguardar próximo ciclo
                 await Task.Delay(_checkInterval, stoppingToken);
             }
 
-            _logger.LogInformation("🛑 OrderCancellationBackgroundService parado");
+            _logger.LogInformation("OrderCancellationBackgroundService parado");
         }
 
         private async Task CancelExpiredOrdersAsync()
@@ -53,17 +53,17 @@ namespace memoriza_backend.Services.BackgroundJobs
             using var scope = _serviceProvider.CreateScope();
             var orderService = scope.ServiceProvider.GetRequiredService<ICustomerOrderService>();
 
-            _logger.LogInformation("🔍 Verificando pedidos pendentes expirados...");
+            _logger.LogInformation("Verificando pedidos pendentes expirados...");
 
             var canceledCount = await orderService.CancelExpiredOrdersAsync();
 
             if (canceledCount > 0)
             {
-                _logger.LogInformation($"✅ {canceledCount} pedido(s) cancelado(s) automaticamente");
+                _logger.LogInformation($"{canceledCount} pedido(s) cancelado(s) automaticamente");
             }
             else
             {
-                _logger.LogInformation("ℹ️ Nenhum pedido expirado encontrado");
+                _logger.LogInformation("Nenhum pedido expirado encontrado");
             }
         }
     }

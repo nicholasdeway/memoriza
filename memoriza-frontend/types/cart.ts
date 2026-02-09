@@ -8,6 +8,11 @@ export interface CartItemDto {
     quantity: number
     unitPrice: number
     subtotal: number
+    sizeId?: number
+    colorId?: number
+    sizeName?: string
+    colorName?: string
+    personalizationText?: string
 }
 
 export interface CartSummaryResponse {
@@ -22,6 +27,8 @@ export interface AddCartItemRequest {
     quantity: number
     sizeId?: number
     colorId?: number
+    sizeName?: string
+    colorName?: string
     personalizationText?: string
 }
 

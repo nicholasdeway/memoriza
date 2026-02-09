@@ -28,6 +28,19 @@ namespace memoriza_backend.Models.DTO.User.Cart
         /// <summary>
         /// Subtotal = UnitPrice * Quantity.
         /// </summary>
+        /// <summary>
+        /// Subtotal = UnitPrice * Quantity.
+        /// </summary>
         public decimal Subtotal => UnitPrice * Quantity;
+
+        public string? PersonalizationText { get; set; }
+
+        public int? SizeId { get; set; }
+
+        public int? ColorId { get; set; }
+
+        public string? SizeName { get; set; }
+
+        public string? ColorName { get; set; }
     }
 }

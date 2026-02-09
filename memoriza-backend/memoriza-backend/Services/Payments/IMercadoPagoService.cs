@@ -6,7 +6,7 @@ namespace memoriza_backend.Services.Payments
 {
     public interface IMercadoPagoService
     {
-        Task<PreferenceResponseDto?> CreatePreferenceForOrderAsync(Order order, List<OrderItem> items);
+        Task<ProcessPaymentResponse> ProcessPaymentAsync(Guid orderId, ProcessPaymentRequest request);
         Task ProcessWebhookAsync(MercadoPagoWebhookDto data);
     }
 }

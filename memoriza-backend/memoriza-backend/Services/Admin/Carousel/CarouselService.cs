@@ -29,16 +29,14 @@ namespace memoriza_backend.Services.Admin.CarouselItems
             return await _repository.GetByIdAsync(id);
         }
 
-        // ===========================================================
         // CREATE
-        // ===========================================================
         public async Task<CarouselItem> CreateAsync(CreateCarouselItemDto dto, IFormFile? imageFile)
         {
-            // 🔥 Validação: título obrigatório exceto full_image
+            // Validação: título obrigatório exceto full_image
             if (dto.TemplateType != "full_image" && string.IsNullOrWhiteSpace(dto.Title))
                 throw new ApplicationException("Título é obrigatório para este template.");
 
-            // 🔥 Validação: imagem sempre obrigatória
+            // Validação: imagem sempre obrigatória
             if (imageFile == null)
                 throw new ApplicationException("Imagem é obrigatória.");
 
@@ -48,7 +46,7 @@ namespace memoriza_backend.Services.Admin.CarouselItems
             {
                 Id = Guid.NewGuid(),
 
-                // ⭐ Sempre garantir valor não nulo (full_image permite string vazia)
+                // Sempre garantir valor não nulo (full_image permite string vazia)
                 Title = dto.TemplateType == "full_image"
                     ? ""
                     : dto.Title?.Trim() ?? "",
@@ -70,16 +68,14 @@ namespace memoriza_backend.Services.Admin.CarouselItems
             return entity;
         }
 
-        // ===========================================================
         // UPDATE
-        // ===========================================================
         public async Task<CarouselItem> UpdateAsync(Guid id, UpdateCarouselItemDto dto, IFormFile? imageFile)
         {
             var entity = await _repository.GetByIdAsync(id);
             if (entity == null)
                 throw new ApplicationException("Banner não encontrado.");
 
-            // 🔥 Validação: título obrigatório exceto full_image
+            // Validação: título obrigatório exceto full_image
             if (dto.TemplateType != "full_image" && string.IsNullOrWhiteSpace(dto.Title))
                 throw new ApplicationException("Título é obrigatório para este template.");
 
@@ -104,25 +100,19 @@ namespace memoriza_backend.Services.Admin.CarouselItems
             return entity;
         }
 
-        // ===========================================================
         // DELETE
-        // ===========================================================
         public async Task DeleteAsync(Guid id)
         {
             await _repository.DeleteAsync(id);
         }
 
-        // ===========================================================
         // REORDER
-        // ===========================================================
         public async Task ReorderAsync(IReadOnlyList<ReorderImageItemDto> items)
         {
             await _repository.ReorderAsync(items);
         }
 
-        // ===========================================================
         // Upload de imagem
-        // ===========================================================
         private async Task<string> SaveImageAsync(IFormFile file)
         {
             var uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "carousel");

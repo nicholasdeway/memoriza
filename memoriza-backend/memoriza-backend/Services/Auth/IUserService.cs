@@ -10,5 +10,6 @@ namespace memoriza_backend.Services.Auth
         Task<string> LoginAsync(LoginUserDto dto);
         Task<string> RequestPasswordResetAsync(RequestPasswordResetDto dto);
         Task<string> ConfirmPasswordResetAsync(ConfirmPasswordResetDto dto);
+        Task<UserProfileDto> GetUserProfileAsync(Guid userId);
     }
 }

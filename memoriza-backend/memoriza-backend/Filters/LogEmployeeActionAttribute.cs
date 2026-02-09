@@ -51,8 +51,8 @@ namespace memoriza_backend.Filters
                     
                     if (employee == null)
                     {
-                        Console.WriteLine($"[LogEmployeeAction] Usuário {userId} não é um Employee (provavelmente Admin), não logando");
-                        return; // Usuário não é um Employee, não loga
+                        Console.WriteLine($"[LogEmployeeAction] Usuário {userId} não é um Employee (provavelmente Admin). Ação executada, mas não registrada em employee_access_logs devido a restrições de FK.");
+                        return; // Usuário não é um Employee, não loga na tabela de funcionários
                     }
 
                     Console.WriteLine($"[LogEmployeeAction] Employee encontrado: {employee.Id}");

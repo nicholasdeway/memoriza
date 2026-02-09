@@ -8,10 +8,9 @@ namespace memoriza_backend.Models.DTO.Payments
         public string OrderNumber { get; set; } = string.Empty;
         public decimal TotalAmount { get; set; }
 
-        // Dados do Mercado Pago
-        public string PreferenceId { get; set; } = string.Empty;
-        public string InitPoint { get; set; } = string.Empty;        // URL do Checkout Pro
-        public string SandboxInitPoint { get; set; } = string.Empty; // opcional
-        public string PublicKey { get; set; } = string.Empty;        // para Brick no frontend
+        public string? PreferenceId { get; set; }
+        public string? InitPoint { get; set; }
+        public string? SandboxInitPoint { get; set; }
+        public string? PublicKey { get; set; }
     }
 }

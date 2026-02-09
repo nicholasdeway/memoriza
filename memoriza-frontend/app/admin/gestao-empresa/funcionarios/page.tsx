@@ -34,8 +34,7 @@ import type {
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 // Tipos da API (camelCase)
 type ApiEmployee = {
@@ -45,6 +44,7 @@ type ApiEmployee = {
   email: string
   phone: string
   cpf?: string
+
   groupId: string
   groupName?: string
   hireDate: string
@@ -73,6 +73,7 @@ const mapApiToEmployee = (api: ApiEmployee): Employee => ({
   email: api.email,
   phone: api.phone,
   cpf: api.cpf,
+
   group_id: api.groupId,
   group_name: api.groupName,
   hire_date: new Date(api.hireDate),
@@ -107,7 +108,7 @@ function formatPhone(value?: string) {
 }
 
 export default function FuncionariosPage() {
-  const { token } = useAuth()
+  const { user } = useAuth()
 
   const [employees, setEmployees] = useState<Employee[]>([])
   const [groups, setGroups] = useState<UserGroup[]>([])
@@ -125,17 +126,17 @@ export default function FuncionariosPage() {
   const itemsPerPage = 10
 
   const fetchData = async () => {
-    if (!token) return
+    // if (!user) return
 
     try {
       setLoading(true)
 
       const [groupsRes, employeesRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/admin/groups`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         }),
         fetch(`${API_BASE_URL}/api/admin/employees`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         }),
       ])
 
@@ -158,7 +159,7 @@ export default function FuncionariosPage() {
 
   useEffect(() => {
     fetchData()
-  }, [token])
+  }, [])
 
   const filteredEmployees = employees.filter((emp) => {
     const search = searchTerm.toLowerCase()
@@ -186,13 +187,31 @@ export default function FuncionariosPage() {
     setDialogOpen(true)
   }
 
-  const handleEditEmployee = (employee: Employee) => {
-    setSelectedEmployee(employee)
-    setDialogOpen(true)
+  const handleEditEmployee = async (employee: Employee) => {
+    try {
+      // Fetch full details (including CPF)
+      const res = await fetch(`${API_BASE_URL}/api/admin/employees/${employee.id}`, {
+        credentials: "include",
+      })
+      
+      if (!res.ok) throw new Error("Erro ao carregar detalhes")
+      
+      const apiEmployee = (await res.json()) as ApiEmployee
+      const detailedEmployee = mapApiToEmployee(apiEmployee)
+      
+      setSelectedEmployee(detailedEmployee)
+      setDialogOpen(true)
+    } catch (error) {
+      console.error("Erro ao carregar detalhes do funcionário:", error)
+      toast.error("Erro ao carregar dados completos do funcionário")
+      // Fallback to basic data if fetch fails
+      setSelectedEmployee(employee)
+      setDialogOpen(true)
+    }
   }
 
   const handleSaveEmployee = async (data: EmployeeFormData) => {
-    if (!token) {
+    if (!user) {
       toast.error("Sessão expirada")
       return
     }
@@ -227,9 +246,9 @@ export default function FuncionariosPage() {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
+        credentials: "include",
       })
 
       if (!res.ok) {
@@ -277,7 +296,7 @@ export default function FuncionariosPage() {
   }
 
   const handleToggleStatus = async (employee: Employee) => {
-    if (!token) return
+    if (!user) return
 
     try {
       const newStatus = employee.status === "active" ? "inactive" : "active"
@@ -288,9 +307,9 @@ export default function FuncionariosPage() {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ status: newStatus }),
+          credentials: "include",
         },
       )
 

@@ -16,8 +16,7 @@ export interface InstallmentsResponse {
     bestOption: InstallmentOption | null;
 }
 
-const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105";
+const API_BASE_URL = "/api-proxy";
 
 // Cache local para evitar chamadas repetidas
 const installmentsCache = new Map<string, InstallmentsResponse>();
@@ -59,8 +58,7 @@ export async function fetchInstallmentsFromAPI(
 
         return data;
     } catch (error) {
-        console.error("Erro ao buscar parcelamento:", error);
-        // Retorna fallback local
+        // Silently handle API errors and return fallback
         return getFallbackInstallments(roundedPrice);
     }
 }
