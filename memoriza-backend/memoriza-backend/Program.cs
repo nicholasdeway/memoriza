@@ -55,6 +55,9 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Garante que variáveis de ambiente sejam lidas (importante para Linux/Docker)
+builder.Configuration.AddEnvironmentVariables();
+
 System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
 // ======================================================
