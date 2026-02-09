@@ -55,6 +55,8 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
+
 // ======================================================
 // SERILOG + MONGODB (LOGS)
 // ======================================================
@@ -98,7 +100,8 @@ builder.Services.AddCors(options =>
                 "https://memoriza-99qigomug-nd320538-1773s-projects.vercel.app"
             )
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
@@ -258,6 +261,29 @@ builder.Services
             RoleClaimType = ClaimTypes.Role,
             NameClaimType = ClaimTypes.NameIdentifier
         };
+
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var cookie = context.Request.Cookies["memoriza_token"];
+                if (!string.IsNullOrEmpty(cookie))
+                {
+                    context.Token = cookie;
+                }
+                return Task.CompletedTask;
+            },
+            OnAuthenticationFailed = context =>
+            {
+                Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+                return Task.CompletedTask;
+            },
+            OnTokenValidated = context =>
+            {
+                Console.WriteLine($"Token validated for user: {context.Principal?.Identity?.Name}");
+                return Task.CompletedTask;
+            }
+        };
     })
     // Cookie temporário para logins externos (Google)
     .AddCookie("External", options =>
@@ -317,7 +343,10 @@ app.MapGet("/", ctx =>
 
 app.UseStaticFiles();
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseRouting();
 

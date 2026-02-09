@@ -22,6 +22,20 @@ namespace memoriza_backend.Controller.Auth
         }
 
         private const string GenericErrorMessage = "Erro interno no servidor.";
+        private const string TokenCookieName = "memoriza_token";
+
+        private void SetTokenCookie(string token)
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true, // Obrigatório para SameSite=None
+                SameSite = SameSiteMode.None, // Permite envio cross-origin (3000 -> 7105)
+                Expires = DateTime.UtcNow.AddMinutes(480), // Igual ao JWT
+                IsEssential = true
+            };
+            Response.Cookies.Append(TokenCookieName, token, cookieOptions);
+        }
 
         // ======================================================
         // REGISTER
@@ -44,7 +58,8 @@ namespace memoriza_backend.Controller.Auth
                     dto.Email
                 );
 
-                return Ok(new { token });
+                SetTokenCookie(token);
+                return Ok(new { message = "Registration successful" });
             }
             catch (ApplicationException ex)
             {
@@ -88,7 +103,8 @@ namespace memoriza_backend.Controller.Auth
                     dto.Identifier
                 );
 
-                return Ok(new { token });
+                SetTokenCookie(token);
+                return Ok(new { message = "Login successful" });
             }
             catch (ApplicationException ex)
             {
@@ -192,6 +208,45 @@ namespace memoriza_backend.Controller.Auth
 
                 return StatusCode(500, new { message = GenericErrorMessage });
             }
+        }
+        // ======================================================
+        // ME (Perfil do Usuário)
+        // ======================================================
+        [HttpGet("me")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        public async Task<IActionResult> Me()
+        {
+            try
+            {
+                var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+                               ?? User.FindFirst("sub");
+
+                if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
+                    return Unauthorized();
+
+                var profile = await _userService.GetUserProfileAsync(userId);
+                return Ok(profile);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro ao buscar perfil do usuário.");
+                return StatusCode(500, new { message = GenericErrorMessage });
+            }
+        }
+
+        // ======================================================
+        // LOGOUT
+        // ======================================================
+        [HttpPost("logout")]
+        public IActionResult Logout()
+        {
+            Response.Cookies.Delete(TokenCookieName, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.None
+            });
+            return Ok(new { message = "Logged out" });
         }
     }
 }

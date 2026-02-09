@@ -2,12 +2,11 @@
 
 import { motion } from "framer-motion";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105";
+const API_BASE_URL = "/api-proxy";
 
 export default function GoogleSignIn() {
   function handleClick() {
-    window.location.href = `${API_BASE_URL}/api/auth/google/login`;
+    window.location.href = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/google/login`;
   }
 
   return (

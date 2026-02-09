@@ -17,8 +17,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105";
+const API_BASE_URL = "/api-proxy";
 
 // Corrige nomes com encoding zoado: AlvÃ¡ro -> Álvaro
 function fixEncoding(value?: string): string {
@@ -52,7 +51,7 @@ type ErrorResponse = {
 };
 
 export default function PerfilPage() {
-  const { user, token, logout, updateUserFromProfile } = useAuth();
+  const { user, logout, updateUserFromProfile } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -123,22 +122,24 @@ export default function PerfilPage() {
     setHydrated(true);
   }, []);
 
-  // Se depois de hidratado não houver token, manda pro login
+  // Se depois de hidratado não houver user, manda pro login
   useEffect(() => {
     if (!hydrated) return;
-    if (!token) {
+    if (!user) {
       router.push("/auth/login");
     }
-  }, [hydrated, token, router]);
+  }, [hydrated, user, router]);
 
   // Conta Google x Local (vem do token/contexto)
   const isGoogleAccount =
     typeof user?.authProvider === "string" &&
     user.authProvider.toLowerCase() === "google";
 
+  const [hasFetchedProfile, setHasFetchedProfile] = useState(false);
+
   // Carrega dados reais do perfil pela API: GET /api/user/me
   useEffect(() => {
-    if (!hydrated || !token) return;
+    if (!hydrated || !user || hasFetchedProfile) return;
 
     const fetchProfile = async () => {
       try {
@@ -146,14 +147,13 @@ export default function PerfilPage() {
         setErroDados("");
 
         const res = await fetch(`${API_BASE_URL}/api/user/me`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
         });
 
         if (!res.ok) {
           console.warn("Erro ao buscar perfil:", res.status);
           setErroDados("Não foi possível carregar seus dados de perfil.");
+          setHasFetchedProfile(true);
           return;
         }
 
@@ -171,6 +171,8 @@ export default function PerfilPage() {
           email: data.email,
           phone: data.phone ?? undefined,
         });
+        
+        setHasFetchedProfile(true);
       } catch (err) {
         console.error("Erro ao buscar perfil:", err);
         setErroDados("Erro ao conectar ao servidor. Tente novamente.");
@@ -180,7 +182,7 @@ export default function PerfilPage() {
     };
 
     fetchProfile();
-  }, [hydrated, token, updateUserFromProfile]);
+  }, [hydrated, user?.id, hasFetchedProfile, updateUserFromProfile]);
 
   if (!hydrated) {
     return (
@@ -190,7 +192,7 @@ export default function PerfilPage() {
     );
   }
 
-  if (!token) {
+  if (!user) {
     return (
       <div className="bg-background border border-border rounded-xl p-12 text-center">
         <p className="text-foreground/60">Redirecionando...</p>
@@ -203,7 +205,7 @@ export default function PerfilPage() {
     setErroDados("");
     setSavedDados(false);
 
-    if (!token) {
+    if (!user) {
       router.push("/auth/login");
       return;
     }
@@ -228,9 +230,9 @@ export default function PerfilPage() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(body),
+        credentials: "include",
       });
 
       let data: unknown = null;
@@ -340,7 +342,7 @@ export default function PerfilPage() {
       return;
     }
 
-    if (!token) {
+    if (!user) {
       setErroSenha("Sessão expirada. Faça login novamente.");
       router.push("/auth/login");
       return;
@@ -353,13 +355,13 @@ export default function PerfilPage() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           currentPassword: senhaAtual,
           newPassword: novaSenha,
           confirmNewPassword: confirmarSenha,
         }),
+        credentials: "include",
       });
 
       let data: unknown = null;
@@ -410,7 +412,7 @@ export default function PerfilPage() {
       return;
     }
 
-    if (!token) {
+    if (!user) {
       setErroExcluir("Sessão expirada. Faça login novamente.");
       router.push("/auth/login");
       return;
@@ -423,12 +425,12 @@ export default function PerfilPage() {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           currentPassword: isGoogleAccount ? null : senhaExcluir,
           reason: motivoExcluir || null,
         }),
+        credentials: "include",
       });
 
       let data: unknown = null;

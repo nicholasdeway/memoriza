@@ -15,30 +15,34 @@ import {
   MapPin,
   CreditCard,
   AlertTriangle,
+  X,
 } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { getOrderDetail, requestRefund } from "@/lib/api/orders"
 import type { OrderDetailResponse } from "@/types/orders"
 import { toast } from "sonner"
+import { getRefundStatusLabel } from "@/lib/utils"
+
+import { initMercadoPago, CardPayment } from "@mercadopago/sdk-react"
 
 // Mapeamento de status para timeline
 const statusTimeline: { status: string; icon: React.ElementType; label: string }[] = [
   { status: "Aprovado", icon: CheckCircle, label: "Aprovado" },
-  { status: "Em Produção", icon: Clock, label: "Em Produção" },
-  { status: "À Caminho", icon: Truck, label: "À Caminho" },
-  { status: "Entregue", icon: Package, label: "Entregue" },
+  { status: "Em produção", icon: Clock, label: "Em Produção" },
+  { status: "À caminho", icon: Truck, label: "À Caminho" },
+  { status: "Finalizado", icon: Package, label: "Entregue" },
 ]
 
-const statusOrder: string[] = ["Aprovado", "Em Produção", "À Caminho", "Entregue"]
+const statusOrder: string[] = ["Aprovado", "Em produção", "À caminho", "Finalizado"]
 
 // Cores para cada status
 const orderStatusColors: Record<string, string> = {
   "Pendente": "bg-yellow-100 text-yellow-700",
   "Aprovado": "bg-green-100 text-green-700",
-  "Em Produção": "bg-blue-100 text-blue-700",
-  "À Caminho": "bg-purple-100 text-purple-700",
-  "Entregue": "bg-emerald-100 text-emerald-700",
+  "Em produção": "bg-blue-100 text-blue-700",
+  "À caminho": "bg-purple-100 text-purple-700",
+  "Finalizado": "bg-emerald-100 text-emerald-700",
   "Cancelado": "bg-red-100 text-red-700",
   "Reembolsado": "bg-orange-100 text-orange-700",
 }
@@ -46,7 +50,7 @@ const orderStatusColors: Record<string, string> = {
 export default function PedidoDetalhesPage() {
   const params = useParams()
   const router = useRouter()
-  const { token } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   
   const [order, setOrder] = useState<OrderDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -55,10 +59,35 @@ export default function PedidoDetalhesPage() {
   const [motivo, setMotivo] = useState("")
   const [submittingRefund, setSubmittingRefund] = useState(false)
   const [activeStep, setActiveStep] = useState<string>("Aprovado")
+  
+  const [document, setDocument] = useState("")
+  const [email, setEmail] = useState("")
+
+  // Estado para controlar qual método de pagamento está selecionado na UI da página de detalhes
+  // 'pix' (default) ou 'card'
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"pix" | "card">("pix")
+
+  // Inicializar Mercado Pago
+  useEffect(() => {
+    initMercadoPago(process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY ?? "", {
+      locale: "pt-BR",
+    })
+  }, [])
+  
+  // Preencher dados do usuário
+  useEffect(() => {
+    if (user?.email) setEmail(user.email)
+  }, [user])
+
+  // PIX QR Code Modal
+  const [pixModalOpen, setPixModalOpen] = useState(false)
+  const [pixQrCode, setPixQrCode] = useState<string | null>(null)
+  const [pixQrCodeBase64, setPixQrCodeBase64] = useState<string | null>(null)
 
   // Buscar detalhes do pedido
   useEffect(() => {
-    if (!token || !params.id) {
+    if (authLoading) return
+    if (!user || !params.id) {
       setLoading(false)
       return
     }
@@ -68,7 +97,7 @@ export default function PedidoDetalhesPage() {
         setLoading(true)
         setError(null)
         
-        const data = await getOrderDetail(params.id as string, token)
+        const data = await getOrderDetail(params.id as string)
         setOrder(data)
         setActiveStep(data.status)
       } catch (err) {
@@ -80,7 +109,31 @@ export default function PedidoDetalhesPage() {
     }
 
     void fetchOrder()
-  }, [token, params.id])
+  }, [user, authLoading, params.id])
+
+  // Polling para verificar status do pagamento (a cada 5 segundos)
+  useEffect(() => {
+    if (!user || !params.id || !order || order.status !== "Pendente") return
+
+    const interval = setInterval(async () => {
+      try {
+        const updatedOrder = await getOrderDetail(params.id as string)
+        if (updatedOrder.status !== "Pendente") {
+          setOrder(updatedOrder)
+          setActiveStep(updatedOrder.status)
+          toast.success("Pagamento confirmado!")
+          
+          if (pixModalOpen) {
+            setPixModalOpen(false)
+          }
+        }
+      } catch (err) {
+        console.error("Erro no polling de status:", err)
+      }
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [user, params.id, order, pixModalOpen])
 
   const handleReembolso = async () => {
     if (!motivo.trim()) {
@@ -88,25 +141,105 @@ export default function PedidoDetalhesPage() {
       return
     }
 
-    if (!order || !token) return
+    if (!order || !user) return
 
     try {
       setSubmittingRefund(true)
       
-      await requestRefund(order.orderId, motivo, token)
+      await requestRefund(order.orderId, motivo)
       
       toast.success("Solicitação de reembolso enviada com sucesso!")
       setReembolsoModalOpen(false)
       setMotivo("")
       
       // Recarregar pedido para atualizar status
-      const updatedOrder = await getOrderDetail(order.orderId, token)
+      const updatedOrder = await getOrderDetail(order.orderId)
       setOrder(updatedOrder)
     } catch (err) {
       console.error("Erro ao solicitar reembolso:", err)
       toast.error(err instanceof Error ? err.message : "Erro ao solicitar reembolso")
     } finally {
       setSubmittingRefund(false)
+    }
+  }
+
+  // 🔹 Handler para Pagamento com Cartão (Chamado pelo Brick)
+  const handleCardSubmit = async (cardFormData: any) => {
+    if (!order || !user) return;
+
+    try {
+      toast.loading("Processando pagamento com cartão...")
+
+      // Usa a URL base do ambiente ou padrão
+      const API_BASE_URL = "/api-proxy"
+
+      const paymentResponse = await fetch(`${API_BASE_URL}/api/user/orders/${order.orderId}/pay-card`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(cardFormData),
+        credentials: "include",
+      });
+
+      const paymentResult = await paymentResponse.json();
+
+      if (!paymentResponse.ok) {
+        console.error("❌ Erro detalhado do Cartão:", paymentResult);
+        throw new Error(paymentResult.message || JSON.stringify(paymentResult) || "Falha no pagamento com cartão");
+      }
+
+      if (paymentResult.status === 'rejected' || paymentResult.status === 'cancelled') {
+        console.warn("⚠️ Pagamento Recusado/Cancelado:", paymentResult); 
+        
+        // Traduzir mensagem de erro do Mercado Pago
+        const statusDetail = paymentResult.status_detail || paymentResult.message;
+        let message = "O pagamento foi recusado.";
+
+        switch (statusDetail) {
+            case "cc_rejected_bad_filled_card_number": message = "Revise o número do cartão."; break;
+            case "cc_rejected_bad_filled_date": message = "Revise a data de vencimento."; break;
+            case "cc_rejected_bad_filled_other": message = "Revise os dados do cartão."; break;
+            case "cc_rejected_bad_filled_security_code": message = "Revise o código de segurança do cartão."; break;
+            case "cc_rejected_blacklist": message = "Não pudemos processar seu pagamento."; break;
+            case "cc_rejected_call_for_authorize": message = "Você deve autorizar o pagamento com o emissor do cartão."; break;
+            case "cc_rejected_card_disabled": message = "Ligue para o emissor do cartão para ativar seu cartão."; break;
+            case "cc_rejected_card_error": message = "Não conseguimos processar seu pagamento."; break;
+            case "cc_rejected_duplicated_payment": message = "Você já efetuou um pagamento com esse valor."; break;
+            case "cc_rejected_high_risk": message = "Seu pagamento foi recusado. Escolha outra forma de pagamento."; break;
+            case "cc_rejected_insufficient_amount": message = "Seu cartão possui saldo insuficiente."; break;
+            case "cc_rejected_invalid_installments": message = "O cartão não processa pagamentos em parcelas."; break;
+            case "cc_rejected_max_attempts": message = "Você atingiu o limite de tentativas permitidas."; break;
+            case "cc_rejected_other_reason": message = "O emissor do cartão não processou o pagamento."; break;
+            default: message = "O pagamento foi recusado. Por favor, tente outra forma de pagamento."; break;
+        }
+
+        toast.dismiss();
+        toast.error(message);
+        return; 
+      }
+
+      console.log("✅ Pagamento Processado com Sucesso:", paymentResult);
+      toast.dismiss();
+
+      if (paymentResult.status === 'approved' || paymentResult.status === 'in_process') {
+          if (paymentResult.status === 'approved') {
+            toast.success("Pagamento aprovado com sucesso! 🎉");
+          } else {
+            toast.info("Pagamento em análise. Aguarde a confirmação.");
+          }
+          
+          // Refresh order
+          const updatedOrder = await getOrderDetail(order.orderId)
+          setOrder(updatedOrder)
+      } else {
+         toast.error("Ocorreu um erro no processamento. Tente novamente.");
+      }
+
+    } catch (error: any) {
+      toast.dismiss();
+      console.error("❌ Erro no fluxo de cartão:", error);
+      toast.error(error.message || "Erro ao processar cartão. Verifique os dados.");
     }
   }
 
@@ -192,7 +325,7 @@ export default function PedidoDetalhesPage() {
           </div>
         )
 
-      case "Em Produção":
+      case "Em produção":
         return (
           <div className="bg-background border border-border rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-start gap-4">
@@ -214,7 +347,7 @@ export default function PedidoDetalhesPage() {
           </div>
         )
 
-      case "À Caminho":
+      case "À caminho":
         return (
           <div className="bg-background border border-border rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-start gap-4">
@@ -264,7 +397,7 @@ export default function PedidoDetalhesPage() {
           </div>
         )
 
-      case "Entregue":
+      case "Finalizado":
         return (
           <div className="bg-background border border-border rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-start gap-4">
@@ -351,33 +484,230 @@ export default function PedidoDetalhesPage() {
         </div>
       </div>
 
-      {/* Payment Recovery Actions */}
-      {order.status === "Pendente" && order.canResume && order.initPoint && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
-          <div className="flex items-start gap-3 mb-4">
-            <CreditCard className="text-yellow-600 mt-0.5" size={24} />
+      {/* Payment Section - Checkout Transparente */}
+      {order.status === "Pendente" && (
+        <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-6">
+          <div className="flex items-start gap-3 mb-6">
+            <CreditCard className="text-blue-600 mt-0.5" size={24} />
             <div>
-              <h3 className="font-medium text-yellow-900">Pagamento Pendente</h3>
-              <p className="text-sm text-yellow-700 mt-1">
-                Seu pedido foi criado, mas o pagamento ainda não foi confirmado.
+              <h3 className="font-medium text-blue-900">Pagamento Pendente</h3>
+              <p className="text-sm text-blue-700 mt-1">
+                Escolha como deseja pagar seu pedido. O pagamento é processado de forma segura.
               </p>
             </div>
           </div>
 
-          <button
-            onClick={() => {
-              if (order.initPoint) {
-                window.location.href = order.initPoint
-              }
-            }}
-            className="w-full flex items-center justify-center gap-2 bg-yellow-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-yellow-700 transition-colors"
-          >
-            <CreditCard size={18} />
-            Concluir Compra
-          </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+              <label htmlFor="document" className="block text-sm font-medium text-blue-900 mb-1">
+                CPF do Pagador (Obrigatório)
+              </label>
+              <input
+                type="text"
+                id="document"
+                placeholder="000.000.000-00"
+                className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={document}
+                onChange={(e) => {
+                  // Remove non-digits and cap at 11 chars
+                  const val = e.target.value.replace(/\D/g, "").slice(0, 11)
+                  // Simple mask
+                  let masked = val
+                  if (val.length > 9) masked = val.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
+                  else if (val.length > 6) masked = val.replace(/(\d{3})(\d{3})(\d{3})/, "$1.$2.$3")
+                  else if (val.length > 3) masked = val.replace(/(\d{3})(\d{3})/, "$1.$2")
+                  
+                  setDocument(masked)
+                }}
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-blue-900 mb-1">
+                Email para Comprovante
+              </label>
+              <input
+                type="email"
+                id="email"
+                placeholder="seu@email.com"
+                className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+          </div>
 
+          {/* Seleção de Método de Pagamento */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <button
+              onClick={() => setSelectedPaymentMethod("pix")}
+              className={`p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                selectedPaymentMethod === "pix"
+                  ? "border-green-500 bg-green-50 ring-1 ring-green-500"
+                  : "border-transparent bg-white hover:bg-gray-50"
+              }`}
+            >
+              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600">
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-gray-900">PIX</p>
+                <p className="text-xs text-gray-500">Aprovação imediata</p>
+              </div>
+            </button>
+
+            <button
+               onClick={() => setSelectedPaymentMethod("card")}
+               className={`p-4 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                selectedPaymentMethod === "card"
+                  ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
+                  : "border-transparent bg-white hover:bg-gray-50"
+              }`}
+            >
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                <CreditCard size={24} />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-gray-900">Cartão de Crédito</p>
+                <p className="text-xs text-gray-500">Até 12x no cartão</p>
+              </div>
+            </button>
+          </div>
+
+          {/* Área de Conteúdo do Pagamento */}
+          <div className="bg-white/50 rounded-xl p-4 border border-white/60">
+            {selectedPaymentMethod === "pix" && (
+              <div className="text-center space-y-4">
+                 <p className="text-sm text-gray-600">
+                    Clique no botão abaixo para gerar o QR Code do PIX. O pagamento é aprovado instantaneamente.
+                 </p>
+                 <button
+                  onClick={async () => {
+                    const cleanDoc = document.replace(/\D/g, "")
+                    if (cleanDoc.length !== 11) {
+                      toast.error("Por favor, digite um CPF válido")
+                      return
+                    }
+
+                    if (!email) {
+                      toast.error("Por favor, informe um email válido")
+                      return
+                    }
+
+                    try {
+                      toast.loading("Processando pagamento PIX...")
+                      
+                      const { processPayment } = await import("@/lib/api/orders")
+                      
+                      const paymentRequest = {
+                        payment_method_id: "pix",
+                        email: email, 
+                        installments: 1,
+                        payer: {
+                            email: email,
+                            identification: {
+                                type: "CPF",
+                                number: cleanDoc
+                            }
+                        }
+                      }
+                      
+                      console.log("Enviando requisição de pagamento (DEBUG):", JSON.stringify(paymentRequest, null, 2))
+                      
+                      const response = await processPayment(
+                        order.orderId,
+                        paymentRequest
+                      )
+                      
+                      console.log("Resposta do pagamento:", response)
+                      
+                      toast.dismiss()
+                      
+                      if (response.status === "pending" && response.qrCode) {
+                        setPixQrCode(response.qrCode)
+                        setPixQrCodeBase64(response.qrCodeBase64 || null)
+                        setPixModalOpen(true)
+                        toast.success("QR Code PIX gerado!")
+                      } else if (response.status === "approved") {
+                        toast.success("Pagamento aprovado!")
+                        const updatedOrder = await getOrderDetail(order.orderId)
+                        setOrder(updatedOrder)
+                      } else if (response.status === "rejected") {
+                        toast.error(response.message || "Pagamento recusado")
+                      } else {
+                        toast.info(response.message || `Status: ${response.status}`)
+                      }
+                    } catch (err) {
+                      toast.dismiss()
+                      console.error("Erro ao processar PIX:", err)
+                      toast.error(err instanceof Error ? err.message : "Erro ao processar pagamento PIX")
+                    }
+                  }}
+                  className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors shadow-sm"
+                >
+                  Gerar PIX e Pagar R$ {order.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </button>
+              </div>
+            )}
+
+            {selectedPaymentMethod === "card" && (
+                  <div className="brick-container">
+                    <CardPayment
+                    initialization={{
+                        amount: order.totalAmount,
+                        payer: {
+                            email: email || user?.email || "email@teste.com",
+                        },
+                    }}
+                    customization={{
+                        paymentMethods: {
+                            minInstallments: 1,
+                            maxInstallments: 12,
+                        },
+                        visual: {
+                            style: {
+                                theme: 'default',
+                            },
+                            hidePaymentButton: false,
+                        },
+                    }}
+                    onSubmit={async (param) => {
+                        console.log("💳 Dados do cartão recebidos:", param);
+                        await handleCardSubmit(param);
+                    }}
+                    onError={async (error) => {
+                        // Tenta extrair qualquer informação útil do erro
+                        console.error("❌ Erro no Brick de Cartão (Raw):", error);
+                        console.error("❌ Erro no Brick de Cartão (JSON):", JSON.stringify(error, null, 2));
+                        
+                        // Tenta acessar propriedades comuns de erro do MP se existirem
+                        // @ts-ignore
+                        if (error?.message) console.error("Message:", error.message);
+                        // @ts-ignore
+                        if (error?.cause) console.error("Cause:", error.cause);
+
+                        toast.error("Erro ao validar cartão de crédito. Verifique o console.");
+                    }}
+                  />
+                </div>
+            )}
+          </div>
+
+          <div className="mt-4 p-4 bg-white/60 rounded-lg">
+            <div className="flex items-start gap-2 text-xs text-gray-600">
+              <svg className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+              </svg>
+              <p>
+                <strong>Pagamento 100% seguro.</strong> Seus dados são protegidos e criptografados. 
+                Processamento via MercadoPago sem necessidade de login.
+              </p>
+            </div>
+          </div>
         </div>
       )}
+
+
 
       {/* Status Timeline Navigation */}
       {order.status !== "Reembolsado" && order.status !== "Cancelado" && (
@@ -462,7 +792,7 @@ export default function PedidoDetalhesPage() {
                 {order.status === "Reembolsado" ? "Pedido Reembolsado" : "Pedido Cancelado"}
               </p>
               <p className={`text-sm ${order.status === "Reembolsado" ? "text-orange-600" : "text-red-600"}`}>
-                Status: {order.refundStatus || "Processando"}
+                Status: {getRefundStatusLabel(order.refundStatus) || "Em processamento"}
               </p>
             </div>
           </div>
@@ -501,7 +831,24 @@ export default function PedidoDetalhesPage() {
                   </div>
                   <div>
                     <p className="font-medium text-foreground">{item.productName}</p>
-                    <p className="text-sm text-foreground/60">Qtd: {item.quantity}</p>
+                    <div className="flex flex-wrap gap-2 text-xs text-foreground/60 mt-1">
+                      <p>Qtd: {item.quantity}</p>
+                      {item.sizeName ? (
+                        <p>• Tamanho: {item.sizeName}</p>
+                      ) : (
+                        item.sizeId && <p>• Tamanho ID: {item.sizeId}</p>
+                      )}
+                      {item.colorName ? (
+                        <p>• Cor: {item.colorName}</p>
+                      ) : (
+                        item.colorId && <p>• Cor ID: {item.colorId}</p>
+                      )}
+                    </div>
+                    {item.personalizationText && (
+                      <div className="mt-2 p-2 bg-muted rounded text-sm italic text-foreground/80">
+                         " {item.personalizationText} "
+                      </div>
+                    )}
                   </div>
                 </div>
                 <p className="font-medium text-foreground">
@@ -639,6 +986,73 @@ export default function PedidoDetalhesPage() {
               >
                 {submittingRefund ? "Enviando..." : "Enviar Solicitação"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PIX QR Code Modal */}
+      {pixModalOpen && pixQrCode && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in-0">
+          <div className="bg-card border border-border rounded-lg shadow-lg max-w-md w-full p-6 animate-in zoom-in-95 slide-in-from-bottom-2 duration-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Pagamento via PIX</h3>
+              <button
+                onClick={() => {
+                  setPixModalOpen(false)
+                  setPixQrCode(null)
+                  setPixQrCodeBase64(null)
+                }}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-5 w-5" />
+                <span className="sr-only">Fechar</span>
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center gap-4">
+              <div className="bg-white p-4 rounded-lg border border-border">
+                {pixQrCodeBase64 ? (
+                  <img
+                    src={`data:image/png;base64,${pixQrCodeBase64}`}
+                    alt="QR Code PIX"
+                    className="w-48 h-48 object-contain"
+                  />
+                ) : (
+                  <div className="w-48 h-48 bg-muted flex items-center justify-center text-muted-foreground text-sm">
+                    QR Code indisponível
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center space-y-2 w-full">
+                <p className="text-sm text-foreground/80">
+                  Escaneie o QR Code acima com o app do seu banco ou copie o código abaixo.
+                </p>
+                
+                <div className="relative">
+                  <input
+                    readOnly
+                    value={pixQrCode}
+                    className="w-full text-xs bg-muted p-3 pr-24 rounded border border-input font-mono truncate"
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(pixQrCode)
+                      toast.success("Código PIX copiado!")
+                    }}
+                    className="absolute right-1 top-1 bottom-1 px-3 bg-primary text-primary-foreground text-xs font-medium rounded hover:bg-primary/90 transition-colors"
+                  >
+                    Copiar
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-6 pt-4 border-t border-border">
+              <p className="text-xs text-muted-foreground text-center">
+                O pagamento será processado em instantes após a confirmação.
+              </p>
             </div>
           </div>
         </div>

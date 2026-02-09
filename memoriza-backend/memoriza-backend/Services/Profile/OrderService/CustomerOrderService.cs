@@ -6,6 +6,7 @@ using memoriza_backend.Helpers;
 using memoriza_backend.Models.DTO.Payments;
 using memoriza_backend.Models.DTO.User.Cart;
 using memoriza_backend.Models.DTO.User.Orders;
+using memoriza_backend.Models.DTO.Profile.Orders;
 using memoriza_backend.Models.DTO.User.Shipping;
 using memoriza_backend.Models.Entities;
 using memoriza_backend.Repositories.Interfaces;
@@ -37,9 +38,7 @@ namespace memoriza_backend.Services.Profile.OrderService
             _configuration = configuration;
         }
 
-        // ===========================================================
-        // GET ORDERS (resumo)
-        // ===========================================================
+
         public async Task<IEnumerable<OrderSummaryForUserResponse>> GetOrdersForUserAsync(string userId)
         {
             var orders = await _orderRepository.GetUserOrdersAsync(userId);
@@ -70,9 +69,7 @@ namespace memoriza_backend.Services.Profile.OrderService
             });
         }
 
-        // ===========================================================
-        // GET ORDER DETAIL
-        // ===========================================================
+
         public async Task<OrderDetailForUserResponse?> GetOrderDetailForUserAsync(string userId, Guid orderId)
         {
             var order = await _orderRepository.GetByIdAsync(orderId, userId);
@@ -97,7 +94,12 @@ namespace memoriza_backend.Services.Profile.OrderService
                 ProductName = i.ProductName,
                 ThumbnailUrl = i.ThumbnailUrl,
                 Quantity = i.Quantity,
-                UnitPrice = i.UnitPrice
+                UnitPrice = i.UnitPrice,
+                PersonalizationText = i.PersonalizationText,
+                SizeId = i.SizeId,
+                ColorId = i.ColorId,
+                SizeName = i.SizeName,
+                ColorName = i.ColorName
             }).ToList();
 
             ShippingOptionDto? shippingOption = null;
@@ -132,7 +134,7 @@ namespace memoriza_backend.Services.Profile.OrderService
                 };
             }
 
-            // ✅ PAYMENT RECOVERY LOGIC
+            // PAYMENT RECOVERY LOGIC
             bool canResume = false;
             bool canReopenQrCode = false;
             string? preferenceId = null;
@@ -171,13 +173,13 @@ namespace memoriza_backend.Services.Profile.OrderService
                 ShippingOption = shippingOption,
                 ShippingAddress = shippingAddress,
 
-                // 🔹 MAPEAMENTO DOS CAMPOS DE RASTREIO / ENTREGA
+                // MAPEAMENTO DOS CAMPOS DE RASTREIO / ENTREGA
                 TrackingCode = order.TrackingCode,
                 TrackingCompany = order.TrackingCompany,
                 TrackingUrl = order.TrackingUrl,
                 DeliveredAt = order.DeliveredAt,
 
-                // ✅ PAYMENT RECOVERY FIELDS
+                // PAYMENT RECOVERY FIELDS
                 PreferenceId = preferenceId,
                 InitPoint = initPoint,
                 SandboxInitPoint = sandboxInitPoint,
@@ -186,9 +188,6 @@ namespace memoriza_backend.Services.Profile.OrderService
             };
         }
 
-        // ===========================================================
-        // CREATE ORDER FROM CART (APENAS SALVAR)
-        // ===========================================================
         public async Task<ServiceResult<OrderDetailForUserResponse>> CreateOrderFromCartAsync(
             string userId,
             CreateOrderFromCartRequest request)
@@ -230,6 +229,7 @@ namespace memoriza_backend.Services.Profile.OrderService
                 ShippingState = address.State,
                 ShippingZipCode = address.ZipCode,
                 ShippingCountry = address.Country,
+                ShippingPhone = request.ShippingPhone,
 
                 // Esses campos começam nulos, mas já existem na entidade
                 TrackingCode = null,
@@ -247,11 +247,20 @@ namespace memoriza_backend.Services.Profile.OrderService
                 ThumbnailUrl = i.ThumbnailUrl,
                 Quantity = i.Quantity,
                 UnitPrice = i.UnitPrice,
-                Subtotal = i.Subtotal
+                Subtotal = i.Subtotal,
+                PersonalizationText = i.PersonalizationText,
+                SizeId = i.SizeId,
+                ColorId = i.ColorId,
+                SizeName = i.SizeName,
+                ColorName = i.ColorName
             }).ToList();
+
+
 
             await _orderRepository.CreateAsync(order);
             await _orderRepository.AddOrderItemsAsync(orderItems);
+            
+            // ✅ Carrinho limpo IMEDIATAMENTE após criar o pedido
             await _cartRepository.ClearCartAsync(cart.Id);
 
             var response = new OrderDetailForUserResponse
@@ -271,10 +280,14 @@ namespace memoriza_backend.Services.Profile.OrderService
                     ProductName = i.ProductName,
                     ThumbnailUrl = i.ThumbnailUrl,
                     Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice
+                    UnitPrice = i.UnitPrice,
+                    PersonalizationText = i.PersonalizationText,
+                    SizeId = i.SizeId,
+                    ColorId = i.ColorId,
+                    SizeName = i.SizeName,
+                    ColorName = i.ColorName
                 }).ToList(),
 
-                // 🔹 Já devolve o DTO com campos de rastreio (ainda nulos agora)
                 TrackingCode = order.TrackingCode,
                 TrackingCompany = order.TrackingCompany,
                 TrackingUrl = order.TrackingUrl,
@@ -284,106 +297,68 @@ namespace memoriza_backend.Services.Profile.OrderService
             return ServiceResult<OrderDetailForUserResponse>.Ok(response);
         }
 
-        // ===========================================================
-        // CHECKOUT + MERCADO PAGO
-        // ===========================================================
-        public async Task<ServiceResult<CheckoutInitResponse>> CheckoutAsync(
-            string userId,
-            CreateOrderFromCartRequest request)
+        public async Task<ServiceResult<ProcessPaymentResponse>> ProcessPaymentAsync(
+            Guid orderId,
+            ProcessPaymentRequest request)
         {
-            var cart = await _cartRepository.GetActiveCartAsync(userId);
-            if (cart == null || cart.Items == null || cart.Items.Count == 0)
+            try
             {
-                return ServiceResult<CheckoutInitResponse>.Fail("Carrinho vazio.");
+                var response = await _mercadoPagoService.ProcessPaymentAsync(orderId, request);
+
+                return ServiceResult<ProcessPaymentResponse>.Ok(response);
             }
-
-            // Busca o endereço de entrega
-            var address = await _addressRepository.GetByIdAsync(request.ShippingAddressId);
-            if (address == null || address.UserId != userId)
-                return ServiceResult<CheckoutInitResponse>.Fail("Endereço de entrega inválido.");
-
-            var subtotal = cart.Items.Sum(i => i.Subtotal);
-            var totalAmount = subtotal + request.ShippingAmount;
-
-            var order = new Order
+            catch (InvalidOperationException ex)
             {
-                Id = Guid.NewGuid(),
-                OrderNumber = $"MEM-{DateTime.UtcNow.Ticks}",
-                UserId = userId,
-                CreatedAt = DateTime.UtcNow,
-                Subtotal = subtotal,
-                ShippingAmount = request.ShippingAmount,
-                TotalAmount = totalAmount,
-                Status = OrderStatusCodes.Pending,
-                ShippingCode = request.ShippingCode,
-                ShippingName = request.ShippingName,
-                ShippingEstimatedDays = request.ShippingEstimatedDays,
-                IsRefundable = true,
-
-                // Snapshot do endereço (preserva histórico)
-                ShippingAddressId = address.Id,
-                ShippingStreet = address.Street,
-                ShippingNumber = address.Number,
-                ShippingComplement = address.Complement,
-                ShippingNeighborhood = address.Neighborhood,
-                ShippingCity = address.City,
-                ShippingState = address.State,
-                ShippingZipCode = address.ZipCode,
-                ShippingCountry = address.Country,
-
-                // idem: começam nulos
-                TrackingCode = null,
-                TrackingCompany = null,
-                TrackingUrl = null,
-                DeliveredAt = null
-            };
-
-            var orderItems = cart.Items.Select(i => new OrderItem
-            {
-                Id = Guid.NewGuid(),
-                OrderId = order.Id,
-                ProductId = i.ProductId,
-                ProductName = i.ProductName,
-                ThumbnailUrl = i.ThumbnailUrl,
-                Quantity = i.Quantity,
-                UnitPrice = i.UnitPrice,
-                Subtotal = i.Subtotal
-            }).ToList();
-
-            await _orderRepository.CreateAsync(order);
-            await _orderRepository.AddOrderItemsAsync(orderItems);
-            await _cartRepository.ClearCartAsync(cart.Id);
-
-            var preference = await _mercadoPagoService.CreatePreferenceForOrderAsync(order, orderItems);
-
-            if (preference == null)
-            {
-                return ServiceResult<CheckoutInitResponse>.Fail("Erro ao iniciar pagamento com Mercado Pago.");
+                return ServiceResult<ProcessPaymentResponse>.Fail(ex.Message);
             }
-
-            // ✅ Salvar dados de pagamento no pedido para permitir recuperação
-            order.PreferenceId = preference.PreferenceId;
-            order.InitPoint = preference.InitPoint;
-            order.SandboxInitPoint = preference.SandboxInitPoint;
-            await _orderRepository.UpdateAsync(order);
-
-            var checkoutResponse = new CheckoutInitResponse
+            catch (Exception ex)
             {
-                OrderId = order.Id,
-                OrderNumber = order.OrderNumber,
-                TotalAmount = order.TotalAmount,
-                PublicKey = preference.PublicKey,
-                PreferenceId = preference.PreferenceId,
-                InitPoint = preference.InitPoint,
-                SandboxInitPoint = preference.SandboxInitPoint
-            };
 
-            return ServiceResult<CheckoutInitResponse>.Ok(checkoutResponse);
+                return ServiceResult<ProcessPaymentResponse>.Fail($"Erro ao processar pagamento: {ex.Message}");
+            }
         }
 
-        // ===========================================================
-        // REFUND REQUEST
-        // ===========================================================
+        private async Task ClearUserCart(string userId)
+        {
+            try 
+            {
+                var cart = await _cartRepository.GetActiveCartAsync(userId);
+                if (cart != null)
+                {
+                    await _cartRepository.ClearCartAsync(cart.Id);
+
+                }
+            }
+            catch (Exception ex)
+            {
+
+            }
+        }
+
+        public async Task<ServiceResult<ProcessPaymentResponse>> ProcessCardPaymentAsync(
+            Guid orderId,
+            CardPaymentRequest request)
+        {
+            var processRequest = new ProcessPaymentRequest
+            {
+                Token = request.Token,
+                PaymentMethodId = request.PaymentMethodId,
+                Installments = request.Installments,
+                IssuerId = request.IssuerId,
+                Payer = new PaymentPayerRequest
+                {
+                    Email = request.Payer.Email,
+                    Identification = new IdentificationRequest
+                    {
+                        Type = request.Payer.Identification.Type,
+                        Number = request.Payer.Identification.Number
+                    }
+                }
+            };
+            return await ProcessPaymentAsync(orderId, processRequest);
+        }
+
+
         public async Task<ServiceResult<RefundStatusResponse>> RequestRefundAsync(
             string userId,
             RequestRefundRequest request)
@@ -395,7 +370,7 @@ namespace memoriza_backend.Services.Profile.OrderService
                 return ServiceResult<RefundStatusResponse>.Fail("Pedido não encontrado para este usuário.");
             }
 
-            // Regra 1: só pode solicitar reembolso se o pedido estiver ENTREGUE
+
             if (order.Status != OrderStatusCodes.Delivered)
             {
                 return ServiceResult<RefundStatusResponse>.Fail(
@@ -403,7 +378,7 @@ namespace memoriza_backend.Services.Profile.OrderService
                 );
             }
 
-            // Regra 2: precisa ter a data de entrega
+
             if (!order.DeliveredAt.HasValue)
             {
                 return ServiceResult<RefundStatusResponse>.Fail(
@@ -446,7 +421,7 @@ namespace memoriza_backend.Services.Profile.OrderService
             // Ler configuração do appsettings.json
             double expirationHours = _configuration.GetValue<double>("OrderCancellation:ExpirationHours", 24);
             
-            Console.WriteLine($"⏰ Buscando pedidos pendentes com mais de {expirationHours} horas ({expirationHours * 60} minutos)...");
+
             
             var expiredOrders = await _orderRepository.GetExpiredPendingOrdersAsync(expirationHours);
             
@@ -459,11 +434,11 @@ namespace memoriza_backend.Services.Profile.OrderService
                 {
                     await _orderRepository.UpdateStatusAsync(order.Id, OrderStatusCodes.Cancelled);
                     canceledCount++;
-                    Console.WriteLine($"✅ Pedido {order.OrderNumber} cancelado automaticamente (criado em {order.CreatedAt:dd/MM/yyyy HH:mm})");
+
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"❌ Erro ao cancelar pedido {order.OrderNumber}: {ex.Message}");
+
                 }
             }
             return canceledCount;

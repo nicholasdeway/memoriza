@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using memoriza_backend.Models.DTO.User.Orders;
 using memoriza_backend.Models.DTO.Payments;
+using memoriza_backend.Models.DTO.Profile.Orders;
 using memoriza_backend.Services.Profile.OrderService;
 
 namespace memoriza_backend.Controller.User
@@ -48,13 +49,87 @@ namespace memoriza_backend.Controller.User
                 return BadRequest(ModelState);
 
             var userId = GetUserId();
-
-            var result = await _orderService.CheckoutAsync(userId, request);
+            
+            var result = await _orderService.CreateOrderFromCartAsync(userId, request);
 
             if (!result.Success || result.Data == null)
                 return BadRequest(result.Errors ?? "Falha ao iniciar checkout.");
 
-            return Ok(result.Data);
+            // Mapeia para o DTO esperado pelo frontend (os campos de Preference serão nulos)
+            var response = new CheckoutInitResponse
+            {
+                OrderId = result.Data.OrderId,
+                OrderNumber = result.Data.OrderNumber,
+                TotalAmount = result.Data.TotalAmount,
+                // PreferenceId e InitPoints serão nulos, confirmando Checkout Transparente
+                PublicKey = null,
+                PreferenceId = null,
+                InitPoint = null,
+                SandboxInitPoint = null
+            };
+
+            return Ok(response);
+        }
+
+        [HttpPost("{orderId:guid}/process-payment")]
+        public async Task<ActionResult<ProcessPaymentResponse>> ProcessPayment(
+            Guid orderId,
+            [FromBody] ProcessPaymentRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                var result = await _orderService.ProcessPaymentAsync(orderId, request);
+                
+                if (!result.Success || result.Data == null)
+                    return BadRequest(result.Errors ?? "Falha ao processar pagamento.");
+
+                return Ok(result.Data);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Erro ao processar pagamento: {ex.Message}");
+            }
+        }
+
+        [HttpPost("{orderId:guid}/pay-card")]
+        public async Task<ActionResult<ProcessPaymentResponse>> ProcessCardPayment(
+            Guid orderId,
+            [FromBody] CardPaymentRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = string.Join("; ", ModelState.Values
+                                    .SelectMany(x => x.Errors)
+                                    .Select(x => x.ErrorMessage));
+                return BadRequest(new { message = "Dados inválidos", errors = errors });
+            }
+
+            try
+            {
+                var result = await _orderService.ProcessCardPaymentAsync(orderId, request);
+
+                if (!result.Success || result.Data == null)
+                {
+                    return BadRequest(new { message = result.Errors ?? "Falha ao processar pagamento com cartão." });
+                }
+
+                return Ok(result.Data);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Erro ao processar pagamento com cartão: {ex.Message}" });
+            }
         }
 
         [HttpPost("{orderId:guid}/refund")]

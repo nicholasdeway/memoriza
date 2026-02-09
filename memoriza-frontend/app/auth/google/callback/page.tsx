@@ -7,34 +7,31 @@ import { useAuth } from "@/lib/auth-context";
 function GoogleCallbackInner() {
   const params = useSearchParams();
   const router = useRouter();
-  const { loginWithToken } = useAuth();
+  const { checkAuth } = useAuth();
 
   useEffect(() => {
     const oauthError = params.get("error");
-    const tokenFromServer = params.get("token");
     const returnUrlFromServer = params.get("returnUrl") || "/";
 
-    if (oauthError && !tokenFromServer) {
+    if (oauthError) {
       router.replace(
         `/auth/login?googleError=${encodeURIComponent(oauthError)}`
       );
       return;
     }
 
-    if (tokenFromServer) {
-      loginWithToken(tokenFromServer);
+    // Apenas verifica se o cookie foi setado
+    checkAuth()
+      .then(() => {
+         // Se sucesso (usuário veio), redireciona
+         router.replace(returnUrlFromServer);
+      })
+      .catch(() => {
+         // Se falha, o backend não setou cookie ou algo deu errado
+         router.replace("/auth/login?googleError=auth_check_failed");
+      });
 
-      if (typeof window !== "undefined" && window.history?.replaceState) {
-        const cleanUrl = window.location.pathname;
-        window.history.replaceState({}, "", cleanUrl);
-      }
-
-      router.replace(returnUrlFromServer);
-      return;
-    }
-
-    router.replace("/auth/login?googleError=missing_token");
-  }, [params, router, loginWithToken]);
+  }, [params, router, checkAuth]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">

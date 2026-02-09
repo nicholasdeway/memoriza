@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Filter, Star, ShoppingCart } from "lucide-react";
 
 import { Header } from "@/components/header";
@@ -24,8 +25,7 @@ import {
   type InstallmentsResponse 
 } from "@/lib/installment-calculator";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105";
+const API_BASE_URL = "/api-proxy";
 
 // ===== Tipos da API =====
 interface CategoryApi {
@@ -139,7 +139,11 @@ const generateSlug = (nome: string) => {
     .replace(/(^-|-$)/g, "");
 };
 
-export default function Home() {
+function HomeContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  
   // slug vindo da URL (?category=...)
   const [categorySlugFromUrl, setCategorySlugFromUrl] = useState<string | null>(
     null,
@@ -171,17 +175,18 @@ export default function Home() {
     Record<string, InstallmentsResponse>
   >({});
 
-  // ===== Ler category da URL no client (sem useSearchParams) =====
+  // ===== Ler category da URL =====
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const params = new URLSearchParams(window.location.search);
-    const categoryFromQuery = params.get("category");
+    const categoryFromQuery = searchParams?.get("category");
 
     if (categoryFromQuery) {
       setCategorySlugFromUrl(categoryFromQuery);
+    } else {
+      // Se não houver categoria na URL, resetar para "Todos"
+      setCategorySlugFromUrl(null);
+      setSelectedCategoryId("Todos");
     }
-  }, []);
+  }, [searchParams]); // Reexecuta quando searchParams mudar
 
   // ===== Fetch filtros + produtos =====
   useEffect(() => {
@@ -809,5 +814,12 @@ export default function Home() {
       <Footer />
       <WhatsAppButton />
     </div>
+  );
+}
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Carregando...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }

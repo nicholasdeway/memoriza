@@ -5,9 +5,10 @@ import { Package, ChevronRight, Search, X } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { getRefundStatusLabel } from "@/lib/utils"
 
 function PedidosPageInner() {
-  const { user, token } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const searchParams = useSearchParams()
   const router = useRouter()
   const statusFilter = searchParams.get("status")
@@ -20,7 +21,9 @@ function PedidosPageInner() {
 
   // Buscar pedidos da API
   useEffect(() => {
-    if (!token) {
+    if (authLoading) return
+
+    if (!user) {
       setLoading(false)
       return
     }
@@ -31,7 +34,7 @@ function PedidosPageInner() {
         setError(null)
         
         const { getMyOrders } = await import("@/lib/api/orders")
-        const data = await getMyOrders(token)
+        const data = await getMyOrders() // Cookie auth
         
         // Mapear para formato esperado pelo componente
         const mappedOrders = data.map((order) => ({
@@ -55,7 +58,7 @@ function PedidosPageInner() {
     }
 
     void fetchOrders()
-  }, [token])
+  }, [user, authLoading])
 
   // Mapeamento de status para cores (mantendo compatibilidade)
   const orderStatusColors: Record<string, string> = {
@@ -172,7 +175,7 @@ function PedidosPageInner() {
                   </p>
                   {order.refundStatus && order.refundStatus !== "None" && (
                     <p className="text-xs text-orange-600 mt-1">
-                      Reembolso: {order.refundStatus}
+                      {getRefundStatusLabel(order.refundStatus)}
                     </p>
                   )}
                 </div>

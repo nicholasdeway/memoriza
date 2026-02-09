@@ -17,9 +17,7 @@ namespace memoriza_backend.Services.Profile.UserService
             _userRepository = userRepository;
         }
 
-        // ======================================================
-        // GET PROFILE
-        // ======================================================
+
         public async Task<UserProfileResponse?> GetProfileAsync(Guid userId)
         {
             var user = await _userRepository.GetByIdAsync(userId);
@@ -42,9 +40,7 @@ namespace memoriza_backend.Services.Profile.UserService
             };
         }
 
-        // ======================================================
-        // UPDATE PROFILE (NOME / TELEFONE)
-        // ======================================================
+
         public async Task<ServiceResult<UserProfileResponse>> UpdateProfileAsync(
             Guid userId,
             UpdateUserProfileRequest request)
@@ -90,9 +86,7 @@ namespace memoriza_backend.Services.Profile.UserService
             });
         }
 
-        // ======================================================
-        // DELETE ACCOUNT
-        // ======================================================
+
         public async Task<ServiceResult<bool>> DeleteAccountAsync(
             Guid userId,
             DeleteAccountRequest request)
@@ -107,9 +101,7 @@ namespace memoriza_backend.Services.Profile.UserService
                 !string.IsNullOrWhiteSpace(user.AuthProvider) &&
                 user.AuthProvider.Equals("Google", StringComparison.OrdinalIgnoreCase);
 
-            // ==================================================
-            // Conta LOCAL → exige senha atual
-            // ==================================================
+
             if (!isGoogleAccount)
             {
                 if (string.IsNullOrWhiteSpace(request.CurrentPassword))
@@ -128,18 +120,14 @@ namespace memoriza_backend.Services.Profile.UserService
                 return ServiceResult<bool>.Ok(true);
             }
 
-            // ==================================================
-            // Conta GOOGLE → não exige senha
-            // ==================================================
+
 
             await _userRepository.SoftDeleteAsync(userId);
 
             return ServiceResult<bool>.Ok(true);
         }
 
-        // ======================================================
-        // CHANGE PASSWORD (LOGADO)
-        // ======================================================
+
         public async Task<ServiceResult<bool>> ChangePasswordAsync(
             Guid userId,
             ChangePasswordDto request)

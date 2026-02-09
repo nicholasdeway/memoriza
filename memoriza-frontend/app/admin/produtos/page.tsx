@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { usePermissions } from "@/lib/use-permissions"
+import { formatCurrencyBRL, parseCurrencyBRL } from "@/lib/currency-utils"
 import {
   DragDropContext,
   Droppable,
@@ -40,8 +41,7 @@ import {
 import { toast } from "sonner"
 import { AdminPagination } from "@/components/admin-pagination"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 type ViewMode = "list" | "grid"
 const VIEW_MODE_KEY = "adminProdutosViewMode"
@@ -125,38 +125,10 @@ interface ModalImage {
   isNew: boolean
 }
 
-// ===== Helpers de formatação de moeda BRL =====
-const formatCurrencyBRL = (value: string): string => {
-  // Remove tudo que não é número
-  const numbers = value.replace(/\D/g, "")
-
-  if (!numbers) return ""
-
-  // Converte para número e divide por 100 para ter os centavos
-  const amount = parseFloat(numbers) / 100
-
-  // Formata no padrão brasileiro
-  return amount.toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-}
-
-const parseCurrencyBRL = (formatted: string): string => {
-  // Remove tudo que não é número
-  const numbers = formatted.replace(/\D/g, "")
-
-  if (!numbers) return ""
-
-  // Converte para número e divide por 100
-  const amount = parseFloat(numbers) / 100
-
-  // Retorna como string com ponto decimal para o backend
-  return amount.toFixed(2)
-}
+// Funções de formatação de moeda agora importadas de @/lib/currency-utils
 
 export default function AdminProdutos() {
-  const { token, isLoading: authLoading } = useAuth()
+  const { user } = useAuth()
   const { canCreate, canEdit, canDelete } = usePermissions('products')
 
   const [products, setProducts] = useState<Product[]>([])
@@ -224,30 +196,20 @@ export default function AdminProdutos() {
   })
 
   // ===== Helper de headers SEM undefined =====
-  const buildAuthHeaders = (
-    extra?: Record<string, string>,
-  ): Record<string, string> => {
-    const headers: Record<string, string> = { ...(extra ?? {}) }
 
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`
-    }
-
-    return headers
-  }
 
   // ===== Carregar dados iniciais =====
   const fetchMetadata = async () => {
     try {
       const [catRes, sizeRes, colorRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/categories`, {
-          headers: buildAuthHeaders(),
+          credentials: "include",
         }),
         fetch(`${API_BASE_URL}/api/sizes`, {
-          headers: buildAuthHeaders(),
+          credentials: "include",
         }),
         fetch(`${API_BASE_URL}/api/colors`, {
-          headers: buildAuthHeaders(),
+          credentials: "include",
         }),
       ])
 
@@ -293,7 +255,7 @@ export default function AdminProdutos() {
     setIsProductsLoading(true)
     try {
       const prodRes = await fetch(`${API_BASE_URL}/api/products`, {
-        headers: buildAuthHeaders(),
+        credentials: "include",
         cache: "no-store",
       })
 
@@ -333,13 +295,13 @@ export default function AdminProdutos() {
   }
 
   useEffect(() => {
-    if (authLoading) return
-
-    // Dispara em paralelo, mas não espera um bloquear o outro
-    void fetchMetadata()
-    void fetchProducts()
+    // Carrega apenas se tiver permissão (admin/funcionario)
+    if (user) {
+      void fetchMetadata()
+      void fetchProducts()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading])
+  }, [user])
 
   /* Paginação */
   const [currentPage, setCurrentPage] = useState(1)
@@ -415,7 +377,7 @@ export default function AdminProdutos() {
     // Buscar detalhes completos do produto para pegar os preços dos tamanhos
     try {
       const res = await fetch(`${API_BASE_URL}/api/products/${product.id}`, {
-        headers: buildAuthHeaders(),
+        credentials: "include",
       })
       
       if (res.ok) {
@@ -426,18 +388,18 @@ export default function AdminProdutos() {
         
         fullProduct.sizes?.forEach((s) => {
           sizePricesMap[s.sizeId] = {
-            price: s.price !== null ? formatCurrencyBRL((s.price * 100).toString()) : "",
+            price: s.price !== null ? formatCurrencyBRL(Math.round(s.price * 100).toString()) : "",
             promotionalPrice: s.promotionalPrice !== null 
-              ? formatCurrencyBRL((s.promotionalPrice * 100).toString()) 
+              ? formatCurrencyBRL(Math.round(s.promotionalPrice * 100).toString()) 
               : "",
           }
         })
         
         setFormData({
           nome: product.nome,
-          preco: formatCurrencyBRL((product.preco * 100).toString()),
+          preco: formatCurrencyBRL(Math.round(product.preco * 100).toString()),
           precoPromocional: product.precoPromocional
-            ? formatCurrencyBRL((product.precoPromocional * 100).toString())
+            ? formatCurrencyBRL(Math.round(product.precoPromocional * 100).toString())
             : "",
           categoriaId: product.categoriaId,
           tamanhos: product.tamanhos ?? [],
@@ -451,9 +413,9 @@ export default function AdminProdutos() {
         // Fallback: usar dados básicos se falhar
         setFormData({
           nome: product.nome,
-          preco: formatCurrencyBRL((product.preco * 100).toString()),
+          preco: formatCurrencyBRL(Math.round(product.preco * 100).toString()),
           precoPromocional: product.precoPromocional
-            ? formatCurrencyBRL((product.precoPromocional * 100).toString())
+            ? formatCurrencyBRL(Math.round(product.precoPromocional * 100).toString())
             : "",
           categoriaId: product.categoriaId,
           tamanhos: product.tamanhos ?? [],
@@ -469,9 +431,9 @@ export default function AdminProdutos() {
       // Fallback em caso de erro
       setFormData({
         nome: product.nome,
-        preco: formatCurrencyBRL((product.preco * 100).toString()),
+        preco: formatCurrencyBRL(Math.round(product.preco * 100).toString()),
         precoPromocional: product.precoPromocional
-          ? formatCurrencyBRL((product.precoPromocional * 100).toString())
+          ? formatCurrencyBRL(Math.round(product.precoPromocional * 100).toString())
           : "",
         categoriaId: product.categoriaId,
         tamanhos: product.tamanhos ?? [],
@@ -545,7 +507,7 @@ export default function AdminProdutos() {
         `${API_BASE_URL}/api/products/images/${imageToRemove.id}`,
         {
           method: "DELETE",
-          headers: buildAuthHeaders(),
+          credentials: "include",
         },
       )
 
@@ -598,7 +560,6 @@ export default function AdminProdutos() {
     }
 
     setIsSaving(true);
-    console.log('🔄 Iniciando salvamento do produto...');
 
     try {
       // Helper para converter e arredondar corretamente
@@ -649,9 +610,10 @@ export default function AdminProdutos() {
           `${API_BASE_URL}/api/products/${editingProduct.id}`,
           {
             method: "PUT",
-            headers: buildAuthHeaders({
+            headers: {
               "Content-Type": "application/json",
-            }),
+            },
+            credentials: "include",
             body: JSON.stringify(payload),
           },
         )
@@ -664,7 +626,6 @@ export default function AdminProdutos() {
           } catch {
             // Se não conseguir parsear, usa mensagem padrão
           }
-          console.error("Erro ao atualizar produto:", errorMessage)
           toast.error(errorMessage)
           setIsSaving(false)
           return
@@ -675,9 +636,10 @@ export default function AdminProdutos() {
         // CREATE
         const res = await fetch(`${API_BASE_URL}/api/products`, {
           method: "POST",
-          headers: buildAuthHeaders({
+          headers: {
             "Content-Type": "application/json",
-          }),
+          },
+          credentials: "include",
           body: JSON.stringify(payload),
         })
 
@@ -689,7 +651,6 @@ export default function AdminProdutos() {
           } catch {
             // Se não conseguir parsear, usa mensagem padrão
           }
-          console.error("Erro ao criar produto:", errorMessage)
           toast.error(errorMessage)
           setIsSaving(false)
           return
@@ -723,14 +684,14 @@ export default function AdminProdutos() {
               try {
                 const res = await fetch(url, {
                   method: "POST",
-                  headers: buildAuthHeaders(),
+                  credentials: "include",
                   body: fd,
                 })
                 if (!res.ok) {
-                  console.error("Falha no upload da imagem", img.file.name)
+                  // Silently handle image upload errors
                 }
               } catch (e) {
-                console.error("Erro no upload", e)
+                // Silently handle upload errors
               }
             } else {
               // Existente -> Adicionar à lista de reordenação
@@ -749,14 +710,15 @@ export default function AdminProdutos() {
               `${API_BASE_URL}/api/products/${productId}/images/reorder`,
               {
                 method: "POST",
-                headers: buildAuthHeaders({
+                headers: {
                   "Content-Type": "application/json",
-                }),
+                },
+                credentials: "include",
                 body: JSON.stringify(reorderList),
               },
             )
           } catch (e) {
-            console.error("Erro ao reordenar imagens", e)
+            // Silently handle reorder errors
           }
         }
       }
@@ -773,7 +735,6 @@ export default function AdminProdutos() {
           : `Produto "${formData.nome}" criado com sucesso!`
       )
     } catch (error) {
-      console.error("Erro ao salvar produto:", error)
       toast.error(
         editingProduct
           ? "Erro ao atualizar produto. Tente novamente."
@@ -811,7 +772,7 @@ export default function AdminProdutos() {
         `${API_BASE_URL}/api/products/${productId}`,
         {
           method: "DELETE",
-          headers: buildAuthHeaders(),
+          credentials: "include",
         },
       )
 
@@ -931,7 +892,7 @@ export default function AdminProdutos() {
 
         const res = await fetch(`${API_BASE_URL}/api/products/${id}`, {
           method: "DELETE",
-          headers: buildAuthHeaders(),
+          credentials: "include", // Envia cookie
         })
 
         // Verificar se houve conflito
@@ -1799,7 +1760,8 @@ export default function AdminProdutos() {
                   onChange={(e) =>
                     setFormData({ ...formData, descricao: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-accent resize-none"
+                  className="w-full px-4 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-accent resize-y min-h-[80px]"
+                  placeholder="Descreva o produto aqui. Quebras de linha serão preservadas na exibição."
                 />
               </div>
             </div>

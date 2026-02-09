@@ -13,6 +13,8 @@ namespace memoriza_backend.Repositories.Admin.Orders
         Task<EntityOrder?> GetByIdAsync(Guid id);
         Task<IReadOnlyList<AdminOrderItem>> GetItemsByOrderIdAsync(Guid orderId);
         Task UpdateAsync(EntityOrder order);
+        Task UpdateStatusOnlyAsync(Guid id, string status, DateTime? deliveredAt);
         Task AddStatusHistoryAsync(AdminOrderStatusHistory history);
+        Task<int> GetCountByStatusAsync(string status);
     }
 }

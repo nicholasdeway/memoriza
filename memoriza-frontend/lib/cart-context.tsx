@@ -19,8 +19,7 @@ import {
 import type { CartItemDto } from "@/types/cart"
 import { toast } from "sonner"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy";
 
 // Local cart item structure (for localStorage)
 export interface LocalCartItem {
@@ -96,6 +95,11 @@ function convertDtoToLocalItem(dto: CartItemDto): LocalCartItem {
     price: dto.unitPrice,
     imageUrl: dto.thumbnailUrl,
     quantity: dto.quantity,
+    sizeId: dto.sizeId,
+    sizeName: dto.sizeName,
+    colorId: dto.colorId,
+    colorName: dto.colorName,
+    personalizationText: dto.personalizationText,
   }
 }
 
@@ -105,7 +109,7 @@ function convertDtoToLocalItem(dto: CartItemDto): LocalCartItem {
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { token, user } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const [items, setItems] = useState<LocalCartItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [hasMigratedCart, setHasMigratedCart] = useState(false)
@@ -121,7 +125,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         return JSON.parse(stored) as LocalCartItem[]
       }
     } catch (error) {
-      console.error("Error loading cart from localStorage:", error)
+      // Silently handle localStorage errors
     }
     return []
   }, [])
@@ -134,7 +138,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems))
     } catch (error) {
-      console.error("Error saving cart to localStorage:", error)
+      // Silently handle localStorage errors
     }
   }, [])
 
@@ -146,21 +150,21 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       window.localStorage.removeItem(CART_STORAGE_KEY)
     } catch (error) {
-      console.error("Error clearing cart from localStorage:", error)
+      // Silently handle localStorage errors
     }
   }, [])
 
   /* ======================================================
      Fetch cart from backend (for logged users)
   ====================================================== */
-  const fetchBackendCart = useCallback(async (authToken: string) => {
+  const fetchBackendCart = useCallback(async () => {
     try {
-      const response = await getCart(authToken)
+      const response = await getCart()
       const backendItems = response.items.map(convertDtoToLocalItem)
       setItems(backendItems)
       return backendItems
     } catch (error) {
-      console.error("Error fetching cart from backend:", error)
+      // Silently handle cart fetch errors
       return []
     }
   }, [])
@@ -169,7 +173,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
      Migrate local cart to backend after login
   ====================================================== */
   const migrateLocalCartToBackend = useCallback(
-    async (authToken: string, localItems: LocalCartItem[]) => {
+    async (localItems: LocalCartItem[]) => {
       if (localItems.length === 0) return
 
       try {
@@ -181,9 +185,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
               quantity: item.quantity,
               sizeId: item.sizeId,
               colorId: item.colorId,
+              sizeName: item.sizeName,
+              colorName: item.colorName,
               personalizationText: item.personalizationText,
-            },
-            authToken
+            }
           )
         }
 
@@ -191,9 +196,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         clearLocalCart()
         
         // Fetch updated cart from backend
-        await fetchBackendCart(authToken)
+        await fetchBackendCart()
       } catch (error) {
-        console.error("Error migrating cart to backend:", error)
         toast.error("Erro ao sincronizar carrinho")
       }
     },
@@ -204,19 +208,22 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
      Initialize cart on mount and when auth changes
   ====================================================== */
   useEffect(() => {
+    // Wait for auth to initialize
+    if (authLoading) return
+
     const initializeCart = async () => {
       setIsLoading(true)
 
-      if (token && user) {
+      if (user) {
         // User is logged in
         const localItems = loadLocalCart()
         
         // Fetch backend cart first
-        await fetchBackendCart(token)
-
-        // Migrate local cart if exists and not already migrated
+        const backendItems = await fetchBackendCart()
+        
+        // If we have local items and haven't migrated yet, do it now
         if (localItems.length > 0 && !hasMigratedCart) {
-          await migrateLocalCartToBackend(token, localItems)
+          await migrateLocalCartToBackend(localItems)
           setHasMigratedCart(true)
         }
       } else {
@@ -230,16 +237,16 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     void initializeCart()
-  }, [token, user, loadLocalCart, fetchBackendCart, migrateLocalCartToBackend, hasMigratedCart])
+  }, [user, authLoading, loadLocalCart, fetchBackendCart, migrateLocalCartToBackend, hasMigratedCart])
 
   /* ======================================================
      Save to localStorage whenever items change (for non-logged users)
   ====================================================== */
   useEffect(() => {
-    if (!token && !isLoading) {
+    if (!user && !isLoading) {
       saveLocalCart(items)
     }
-  }, [items, token, isLoading, saveLocalCart])
+  }, [items, user, isLoading, saveLocalCart])
 
   /* ======================================================
      ADD ITEM
@@ -270,7 +277,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         personalizationText,
       } = params
 
-      if (token) {
+      if (user) {
         // User is logged in, use backend
         try {
           const response = await addCartItem(
@@ -279,14 +286,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
               quantity,
               sizeId,
               colorId,
+              sizeName,
+              colorName,
               personalizationText,
-            },
-            token
+            }
           )
           const backendItems = response.items.map(convertDtoToLocalItem)
           setItems(backendItems)
         } catch (error) {
-          console.error("Error adding item to cart:", error)
           toast.error(
             error instanceof Error
               ? error.message
@@ -332,7 +339,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         })
       }
     },
-    [token]
+    [user]
   )
 
   /* ======================================================
@@ -348,7 +355,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
     ) => {
       if (quantity < 1) return
 
-      if (token) {
+      if (user) {
         // User is logged in, use backend
         try {
           // Find the cart item ID from current items
@@ -361,7 +368,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
           const item = items.find((i) => i.id === itemId)
 
           if (!item) {
-            console.error("Item not found in cart")
             return
           }
 
@@ -369,13 +375,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
             {
               cartItemId: item.id,
               quantity,
-            },
-            token
+            }
           )
           const backendItems = response.items.map(convertDtoToLocalItem)
           setItems(backendItems)
         } catch (error) {
-          console.error("Error updating cart item quantity:", error)
           toast.error("Erro ao atualizar quantidade")
         }
       } else {
@@ -394,7 +398,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         )
       }
     },
-    [token, items]
+    [user, items]
   )
 
   /* ======================================================
@@ -402,20 +406,18 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   ====================================================== */
   const removeItem = useCallback(
     async (itemId: string) => {
-      if (token) {
+      if (user) {
         // User is logged in, use backend
         try {
           const response = await removeCartItem(
             {
               cartItemId: itemId,
-            },
-            token
+            }
           )
           const backendItems = response.items.map(convertDtoToLocalItem)
           setItems(backendItems)
           toast.success("Produto removido do carrinho")
         } catch (error) {
-          console.error("Error removing item from cart:", error)
           toast.error("Erro ao remover produto")
         }
       } else {
@@ -424,21 +426,20 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         toast.success("Produto removido do carrinho")
       }
     },
-    [token]
+    [user]
   )
 
   /* ======================================================
      CLEAR CART
   ====================================================== */
   const clearCart = useCallback(async () => {
-    if (token) {
+    if (user) {
       // User is logged in, use backend
       try {
-        await clearCartApi(token)
+        await clearCartApi()
         setItems([])
         toast.success("Carrinho limpo")
       } catch (error) {
-        console.error("Error clearing cart:", error)
         toast.error("Erro ao limpar carrinho")
       }
     } else {
@@ -447,7 +448,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
       clearLocalCart()
       toast.success("Carrinho limpo")
     }
-  }, [token, clearLocalCart])
+  }, [user, clearLocalCart])
 
   /* ======================================================
      Calculate derived values

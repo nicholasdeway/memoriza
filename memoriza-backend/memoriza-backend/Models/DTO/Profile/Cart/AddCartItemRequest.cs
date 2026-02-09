@@ -26,6 +26,16 @@ namespace memoriza_backend.Models.DTO.User.Cart
         /// Id da cor selecionada (opcional).
         /// </summary>
         public int? ColorId { get; set; }
+
+        /// <summary>
+        /// Nome do tamanho selecionado (opcional).
+        /// </summary>
+        public string? SizeName { get; set; }
+
+        /// <summary>
+        /// Nome da cor selecionada (opcional).
+        /// </summary>
+        public string? ColorName { get; set; }
         
         /// <summary>
         /// Texto de personalização (opcional).

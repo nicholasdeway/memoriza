@@ -18,6 +18,10 @@ namespace memoriza_backend.Models.Entities
 
         // Nome completo do cliente (JOIN em users)
         public string CustomerName { get; set; } = string.Empty;
+        
+        // Dados de contato do cliente (JOIN em users) - para admin entrar em contato
+        public string? CustomerEmail { get; set; }
+        public string? CustomerPhone { get; set; }
 
         public DateTime CreatedAt { get; set; }
 
@@ -46,6 +50,9 @@ namespace memoriza_backend.Models.Entities
         public string ShippingState { get; set; } = string.Empty;
         public string ShippingZipCode { get; set; } = string.Empty;
         public string ShippingCountry { get; set; } = "Brasil";
+        
+        // Telefone de contato para entrega (preenchido no checkout)
+        public string? ShippingPhone { get; set; }
 
         // Observações de personalização
         public string? PersonalizationNotes { get; set; }
@@ -79,5 +86,10 @@ namespace memoriza_backend.Models.Entities
         /// URL de pagamento (sandbox)
         /// </summary>
         public string? SandboxInitPoint { get; set; }
+        
+        /// <summary>
+        /// ID do pagamento no MercadoPago (Checkout Transparente)
+        /// </summary>
+        public long? PaymentId { get; set; }
     }
 }

@@ -14,13 +14,16 @@ namespace memoriza_backend.Services.Admin.Orders
     {
         private readonly IAdminOrderRepository _repository;
         private readonly ICustomerOrderRepository _customerOrderRepository;
+        private readonly Microsoft.Extensions.Logging.ILogger<AdminOrderService> _logger;
 
         public AdminOrderService(
             IAdminOrderRepository repository,
-            ICustomerOrderRepository customerOrderRepository)
+            ICustomerOrderRepository customerOrderRepository,
+            Microsoft.Extensions.Logging.ILogger<AdminOrderService> logger)
         {
             _repository = repository;
             _customerOrderRepository = customerOrderRepository;
+            _logger = logger;
         }
 
         // LISTA DE PEDIDOS
@@ -28,9 +31,21 @@ namespace memoriza_backend.Services.Admin.Orders
         {
             var orders = await _repository.GetAllAsync();
 
+            if (orders.Any())
+            {
+                var first = orders.First();
+                _logger.LogInformation("AdminOrderService.GetAllAsync: Retrieved {Count} orders. First Order Id={Id}, TotalAmount={Total}, Subtotal={Subtotal}", 
+                    orders.Count, first.Id, first.TotalAmount, first.Subtotal);
+            }
+            else 
+            {
+                _logger.LogInformation("AdminOrderService.GetAllAsync: No orders found.");
+            }
+
             return orders.Select(o => new OrderListItemDto
             {
                 Id = o.Id,
+                OrderNumber = o.OrderNumber,
                 CustomerName = o.CustomerName,
                 Subtotal = o.Subtotal,
                 FreightValue = o.ShippingAmount,
@@ -39,7 +54,8 @@ namespace memoriza_backend.Services.Admin.Orders
                 CreatedAt = o.CreatedAt,
                 TrackingCode = o.TrackingCode,
                 TrackingCompany = o.TrackingCompany,
-                TrackingUrl = o.TrackingUrl
+                TrackingUrl = o.TrackingUrl,
+                RefundStatus = o.RefundStatus
             }).ToList();
         }
 
@@ -54,8 +70,11 @@ namespace memoriza_backend.Services.Admin.Orders
             return new OrderDetailDto
             {
                 Id = order.Id,
+                OrderNumber = order.OrderNumber,
                 UserId = order.UserId,
                 CustomerName = order.CustomerName,
+                CustomerEmail = order.CustomerEmail,
+                CustomerPhone = order.CustomerPhone,
                 Subtotal = order.Subtotal,
                 FreightValue = order.ShippingAmount,
                 Total = order.TotalAmount,
@@ -66,6 +85,11 @@ namespace memoriza_backend.Services.Admin.Orders
                 TrackingCompany = order.TrackingCompany,
                 TrackingUrl = order.TrackingUrl,
                 DeliveredAt = order.DeliveredAt,
+                IsRefundable = order.IsRefundable,
+                RefundStatus = order.RefundStatus,
+                RefundReason = order.RefundReason,
+                RefundRequestedAt = order.RefundRequestedAt,
+                RefundProcessedAt = order.RefundProcessedAt,
                 ShippingAddressId = order.ShippingAddressId,
                 ShippingStreet = order.ShippingStreet,
                 ShippingNumber = order.ShippingNumber,
@@ -75,13 +99,19 @@ namespace memoriza_backend.Services.Admin.Orders
                 ShippingState = order.ShippingState,
                 ShippingZipCode = order.ShippingZipCode,
                 ShippingCountry = order.ShippingCountry,
+                ShippingPhone = order.ShippingPhone,
                 Items = items.Select(i => new OrderItemDto
                 {
                     ProductId = i.ProductId,
                     ProductName = i.ProductName,
                     UnitPrice = i.UnitPrice,
                     Quantity = i.Quantity,
-                    LineTotal = i.UnitPrice * i.Quantity
+                    LineTotal = i.UnitPrice * i.Quantity,
+                    PersonalizationText = i.PersonalizationText,
+                    SizeId = i.SizeId,
+                    ColorId = i.ColorId,
+                    SizeName = i.SizeName,
+                    ColorName = i.ColorName
                 }).ToList()
             };
         }
@@ -96,7 +126,12 @@ namespace memoriza_backend.Services.Admin.Orders
                 ProductName = i.ProductName,
                 UnitPrice = i.UnitPrice,
                 Quantity = i.Quantity,
-                LineTotal = i.UnitPrice * i.Quantity
+                LineTotal = i.UnitPrice * i.Quantity,
+                PersonalizationText = i.PersonalizationText,
+                SizeId = i.SizeId,
+                ColorId = i.ColorId,
+                SizeName = i.SizeName,
+                ColorName = i.ColorName
             }).ToList();
         }
 
@@ -127,12 +162,14 @@ namespace memoriza_backend.Services.Admin.Orders
             if (order == null)
                 throw new ApplicationException("Pedido não encontrado.");
 
+
             order.Status = newStatusCode;
 
             if (newStatusCode == OrderStatusCodes.Delivered)
                 order.DeliveredAt = DateTime.UtcNow;
 
-            await _repository.UpdateAsync(order);
+            // Updated to use UpdateStatusOnlyAsync to avoid overwriting financial fields (bug fix)
+            await _repository.UpdateStatusOnlyAsync(order.Id, newStatusCode, order.DeliveredAt);
 
             await _repository.AddStatusHistoryAsync(new OrderStatusHistory
             {
@@ -152,6 +189,52 @@ namespace memoriza_backend.Services.Admin.Orders
                 dto.TrackingCompany ?? string.Empty,
                 dto.TrackingUrl ?? string.Empty
             );
+        }
+
+        // REFUND MANAGEMENT
+        public async Task ApproveRefundAsync(Guid orderId, RefundDecisionDto dto)
+        {
+            var order = await _repository.GetByIdAsync(orderId);
+            if (order == null) throw new ApplicationException("Pedido não encontrado.");
+
+            order.RefundStatus = "Approved";
+            order.RefundProcessedAt = DateTime.UtcNow;
+            order.Status = OrderStatusCodes.Refunded;
+
+            await _repository.UpdateAsync(order);
+
+            await _repository.AddStatusHistoryAsync(new OrderStatusHistory
+            {
+                OrderId = order.Id,
+                Status = OrderStatusCodes.Refunded,
+                ChangedByUserId = dto.AdminUserId,
+                Note = "Reembolso aprovado" + (string.IsNullOrWhiteSpace(dto.Note) ? "" : $": {dto.Note}")
+            });
+        }
+
+        public async Task RejectRefundAsync(Guid orderId, RefundDecisionDto dto)
+        {
+            var order = await _repository.GetByIdAsync(orderId);
+            if (order == null) throw new ApplicationException("Pedido não encontrado.");
+
+            order.RefundStatus = "Rejected";
+            order.RefundProcessedAt = DateTime.UtcNow;
+            // Status do pedido não muda (continua Delivered)
+
+            await _repository.UpdateAsync(order);
+
+            await _repository.AddStatusHistoryAsync(new OrderStatusHistory
+            {
+                OrderId = order.Id,
+                Status = order.Status,
+                ChangedByUserId = dto.AdminUserId,
+                Note = "Reembolso recusado" + (string.IsNullOrWhiteSpace(dto.Note) ? "" : $": {dto.Note}")
+            });
+        }
+
+        public async Task<int> GetPaidOrdersCountAsync()
+        {
+            return await _repository.GetCountByStatusAsync(OrderStatusCodes.Paid);
         }
     }
 }

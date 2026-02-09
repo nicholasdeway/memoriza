@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation"
 import { usePermissions } from "@/lib/use-permissions"
 import { toast } from "sonner"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 function fixEncoding(value?: string): string {
   if (!value) return ""
@@ -40,7 +40,7 @@ type ErrorResponse = {
 }
 
 export default function AdminConfiguracoes() {
-  const { user, token, updateUserFromProfile } = useAuth()
+  const { user, updateUserFromProfile } = useAuth()
   const router = useRouter()
   const { canEdit } = usePermissions('settings')
 
@@ -81,22 +81,24 @@ export default function AdminConfiguracoes() {
     setHydrated(true)
   }, [])
 
-  // Se depois de hidratado não houver token, manda pro login
+  // Se depois de hidratado não houver user, manda pro login
   useEffect(() => {
     if (!hydrated) return
-    if (!token) {
+    if (!user) {
       router.push("/auth/login")
     }
-  }, [hydrated, token, router])
+  }, [hydrated, user, router])
 
   // Conta Google x Local
   const isGoogleAccount =
     typeof user?.authProvider === "string" &&
     user.authProvider.toLowerCase() === "google"
 
+  const [hasFetchedProfile, setHasFetchedProfile] = useState(false)
+
   // Carrega dados reais do perfil pela API: GET /api/user/me
   useEffect(() => {
-    if (!hydrated || !token) return
+    if (!hydrated || !user || hasFetchedProfile) return
 
     const fetchProfile = async () => {
       try {
@@ -104,14 +106,14 @@ export default function AdminConfiguracoes() {
         setErro("")
 
         const res = await fetch(`${API_BASE_URL}/api/user/me`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
         })
 
         if (!res.ok) {
           console.warn("Erro ao buscar perfil:", res.status)
           setErro("Não foi possível carregar seus dados de perfil.")
+          // Marcamos como "buscado" para não tentar de novo infinitamente caso dê erro 401/403
+          setHasFetchedProfile(true)
           return
         }
 
@@ -129,6 +131,8 @@ export default function AdminConfiguracoes() {
           email: data.email,
           phone: data.phone ?? undefined,
         })
+        
+        setHasFetchedProfile(true)
       } catch (err) {
         console.error("Erro ao buscar perfil:", err)
         setErro("Erro ao conectar ao servidor. Tente novamente.")
@@ -138,7 +142,7 @@ export default function AdminConfiguracoes() {
     }
 
     fetchProfile()
-  }, [hydrated, token, updateUserFromProfile])
+  }, [hydrated, user, hasFetchedProfile, updateUserFromProfile])
 
   if (!hydrated) {
     return (
@@ -150,7 +154,7 @@ export default function AdminConfiguracoes() {
     )
   }
 
-  if (!token) {
+  if (!user) {
     return (
       <div className="p-8">
         <div className="bg-card border border-border rounded-xl p-12 text-center">
@@ -164,7 +168,7 @@ export default function AdminConfiguracoes() {
     setErro("")
     setSaved(false)
 
-    if (!token) {
+    if (!user) {
       router.push("/auth/login")
       return
     }
@@ -194,9 +198,9 @@ export default function AdminConfiguracoes() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(body),
+        credentials: "include",
       })
 
       let data: unknown = null

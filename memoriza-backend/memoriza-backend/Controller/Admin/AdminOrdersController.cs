@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using memoriza_backend.Filters;
 
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace memoriza_backend.Controllers.Admin
 {
@@ -24,6 +25,13 @@ namespace memoriza_backend.Controllers.Admin
         {
             var orders = await _service.GetAllAsync();
             return Ok(orders);
+        }
+
+        [HttpGet("count/paid")]
+        public async Task<IActionResult> GetPaidOrdersCount()
+        {
+            var count = await _service.GetPaidOrdersCountAsync();
+            return Ok(new { count });
         }
 
         [HttpGet("{id:guid}")]
@@ -55,10 +63,19 @@ namespace memoriza_backend.Controllers.Admin
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            // Pega o ID do usuário do token (seguro)
+            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier) 
+                           ?? User.FindFirst("sub");
+
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var adminIds))
+            {
+                return Unauthorized();
+            }
+
             await _service.UpdateStatusAsync(
                 id,
                 dto.NewStatus,
-                dto.AdminUserId,
+                adminIds,
                 dto.Note
             );
 
@@ -73,6 +90,40 @@ namespace memoriza_backend.Controllers.Admin
                 return BadRequest(ModelState);
 
             await _service.UpdateTrackingAsync(id, dto);
+            return NoContent();
+        }
+
+        [HttpPost("{id:guid}/refund/approve")]
+        [LogEmployeeAction(Module = "orders", Action = "update_status")]
+        public async Task<IActionResult> ApproveRefund(Guid id, [FromBody] RefundDecisionDto dto)
+        {
+            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+                           ?? User.FindFirst("sub");
+
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var adminId))
+            {
+                return Unauthorized();
+            }
+
+            dto.AdminUserId = adminId;
+            await _service.ApproveRefundAsync(id, dto);
+            return NoContent();
+        }
+
+        [HttpPost("{id:guid}/refund/reject")]
+        [LogEmployeeAction(Module = "orders", Action = "update_status")]
+        public async Task<IActionResult> RejectRefund(Guid id, [FromBody] RefundDecisionDto dto)
+        {
+            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+                           ?? User.FindFirst("sub");
+
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var adminId))
+            {
+                return Unauthorized();
+            }
+
+            dto.AdminUserId = adminId;
+            await _service.RejectRefundAsync(id, dto);
             return NoContent();
         }
     }

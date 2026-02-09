@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, Eye, X, ChevronDown, Truck } from "lucide-react"
+import { Search, Eye, X, ChevronDown, Truck, RefreshCcw } from "lucide-react"
 import { AdminPagination } from "@/components/admin-pagination"
 
 import {
@@ -12,13 +12,28 @@ import {
 import { useAuth } from "@/lib/auth-context"
 import { toast } from "sonner"
 import { usePermissions } from "@/lib/use-permissions"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
+
+import {
+  approveRefund,
+  rejectRefund,
+} from "@/lib/api/admin-orders"
 
 // =======================
 // Tipos da API (backend)
 // =======================
+
 
 type BackendOrderStatus =
   | "Pending"
@@ -37,9 +52,9 @@ interface OrderListItemApi {
   total: number
   status: BackendOrderStatus
   createdAt: string
-  trackingCode?: string | null
-  trackingCompany?: string | null
   trackingUrl?: string | null
+  refundStatus?: string | null
+  orderNumber: string
 }
 
 interface OrderItemApi {
@@ -48,12 +63,19 @@ interface OrderItemApi {
   unitPrice: number
   quantity: number
   lineTotal: number
+  personalizationText?: string | null
+  sizeId?: number | null
+  colorId?: number | null
+  sizeName?: string | null
+  colorName?: string | null
 }
 
 interface OrderDetailApi {
   id: string
   userId: string
   customerName: string
+  customerEmail?: string | null
+  customerPhone?: string | null
 
   subtotal: number
   freightValue: number
@@ -77,8 +99,16 @@ interface OrderDetailApi {
   shippingState?: string | null
   shippingZipCode?: string | null
   shippingCountry?: string | null
+  shippingPhone?: string | null
 
   items: OrderItemApi[]
+  
+  isRefundable: boolean
+  refundStatus?: string | null
+  refundReason?: string | null
+  refundRequestedAt?: string | null
+  refundProcessedAt?: string | null
+  orderNumber: string
 }
 
 // =======================
@@ -93,12 +123,16 @@ type OrderListItem = {
   total: number
   status: OrderStatus
   createdAt: string
+  refundStatus?: string | null
+  orderNumber: string
 }
 
 type OrderDetail = {
   id: string
   userId: string
   customerName: string
+  customerEmail?: string | null
+  customerPhone?: string | null
 
   subtotal: number
   freightValue: number
@@ -122,6 +156,7 @@ type OrderDetail = {
   shippingState?: string | null
   shippingZipCode?: string | null
   shippingCountry?: string | null
+  shippingPhone?: string | null
 
   items: {
     productId: string
@@ -129,7 +164,19 @@ type OrderDetail = {
     unitPrice: number
     quantity: number
     lineTotal: number
+    personalizationText?: string | null
+    sizeId?: number | null
+    colorId?: number | null
+    sizeName?: string | null
+    colorName?: string | null
   }[]
+
+  isRefundable: boolean
+  refundStatus?: string | null
+  refundReason?: string | null
+  refundRequestedAt?: string | null
+  refundProcessedAt?: string | null
+  orderNumber: string
 }
 
 // fluxo visual (mantive o mock)
@@ -181,8 +228,20 @@ const uiToBackendStatus = (status: OrderStatus): BackendOrderStatus => {
   return map[status as string] ?? "Pending"
 }
 
+const formatPhone = (phone: string | null | undefined): string => {
+  if (!phone) return ""
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+  }
+  return phone
+}
+
 export default function AdminPedidos() {
-  const { token, user } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const { canEdit, canUpdateStatus } = usePermissions('orders')
 
   const [orders, setOrders] = useState<OrderListItem[]>([])
@@ -203,6 +262,15 @@ export default function AdminPedidos() {
     trackingUrl: "",
   })
 
+  // Estado do Dialog de Reembolso
+  const [refundDialog, setRefundDialog] = useState<{
+    open: boolean
+    approve: boolean
+  }>({
+    open: false,
+    approve: false,
+  })
+
   // Paginação
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
@@ -211,12 +279,12 @@ export default function AdminPedidos() {
   // Fetch listagem de pedidos
   // ===========================
   const fetchOrders = async () => {
-    if (!token) return
+    if (authLoading) return
 
     try {
       setLoading(true)
       const res = await fetch(`${API_BASE_URL}/api/admin/orders`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       })
 
       if (!res.ok) {
@@ -234,7 +302,7 @@ export default function AdminPedidos() {
 
       const data: OrderListItemApi[] = await res.json()
 
-      const mapped: OrderListItem[] = data.map((o) => ({
+      const mapped: OrderListItem[] = data.map((o: any) => ({
         id: o.id,
         customerName: o.customerName,
         subtotal: o.subtotal,
@@ -242,6 +310,8 @@ export default function AdminPedidos() {
         total: o.total,
         status: backendToUiStatus(o.status),
         createdAt: o.createdAt,
+        refundStatus: o.refundStatus,
+        orderNumber: o.orderNumber || o.OrderNumber || o.order_number || "",
       }))
 
       setOrders(mapped)
@@ -255,17 +325,17 @@ export default function AdminPedidos() {
 
   useEffect(() => {
     void fetchOrders()
-  }, [token])
+  }, [user, authLoading])
 
   // ===========================
   // Fetch detalhe de 1 pedido
   // ===========================
   const fetchOrderDetail = async (id: string): Promise<OrderDetail | null> => {
-    if (!token) return null
+    if (!user) return null
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/orders/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       })
 
       if (!res.ok) {
@@ -278,6 +348,8 @@ export default function AdminPedidos() {
         id: data.id,
         userId: data.userId,
         customerName: data.customerName,
+        customerEmail: data.customerEmail,
+        customerPhone: data.customerPhone,
         subtotal: data.subtotal,
         freightValue: data.freightValue,
         total: data.total,
@@ -303,7 +375,19 @@ export default function AdminPedidos() {
           unitPrice: i.unitPrice,
           quantity: i.quantity,
           lineTotal: i.lineTotal,
+          personalizationText: i.personalizationText,
+          sizeId: i.sizeId,
+          colorId: i.colorId,
+          sizeName: i.sizeName,
+          colorName: i.colorName,
         })),
+        shippingPhone: data.shippingPhone,
+        isRefundable: data.isRefundable,
+        refundStatus: data.refundStatus,
+        refundReason: data.refundReason,
+        refundRequestedAt: data.refundRequestedAt,
+        refundProcessedAt: data.refundProcessedAt,
+        orderNumber: (data as any).orderNumber || (data as any).OrderNumber || (data as any).order_number || "",
       }
 
       return detail
@@ -320,6 +404,7 @@ export default function AdminPedidos() {
   const filteredOrders = orders.filter((o) => {
     const matchSearch =
       o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.customerName.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchStatus = !filterStatus || o.status === filterStatus
@@ -339,10 +424,26 @@ export default function AdminPedidos() {
   // Atualizar status (PUT /status)
   // ===========================
   const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
-    if (!token) return
+    if (!user) return
 
     if (!canUpdateStatus) {
       toast.error("Você não tem permissão para atualizar status de pedidos")
+      return
+    }
+
+    // 🚚 Se for "A Caminho", abrir modal de rastreio antes!
+    if (newStatus === "a_caminho") {
+      const detail = await fetchOrderDetail(orderId)
+      if (detail) {
+        setTrackingOrder(detail)
+        setTrackingData({
+          trackingCode: detail.trackingCode ?? "",
+          trackingCompany: detail.trackingCompany ?? "",
+          trackingUrl: detail.trackingUrl ?? "",
+        })
+        setShowTrackingModal(true)
+        setShowStatusDropdown(null)
+      }
       return
     }
 
@@ -359,9 +460,8 @@ export default function AdminPedidos() {
     }
 
     try {
-      const adminUserId =
-        (user?.id as string | undefined) ??
-        "00000000-0000-0000-0000-000000000000"
+      // Tenta pegar ID do usuário logado, senão usa GUID vazio (pode dar erro de FK se backend exigir)
+      const adminUserId = user?.id ?? "00000000-0000-0000-0000-000000000000"
 
       const body = {
         newStatus: uiToBackendStatus(newStatus),
@@ -369,26 +469,30 @@ export default function AdminPedidos() {
         note: null as string | null,
       }
 
+      console.log("Atualizando status:", body)
+
       const res = await fetch(
         `${API_BASE_URL}/api/admin/orders/${orderId}/status`,
         {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(body),
+          credentials: "include",
         },
       )
 
       if (!res.ok) {
-        throw new Error("Falha ao atualizar status")
+        const errText = await res.text()
+        console.error("Erro body:", errText)
+        throw new Error(`Falha ao atualizar status: ${res.status}`)
       }
 
       toast.success("Status atualizado com sucesso!")
     } catch (error) {
       console.error("Erro ao atualizar status:", error)
-      toast.error("Erro ao atualizar status do pedido.")
+      toast.error("Erro ao atualizar status do pedido. Verifique o console.")
       setOrders(previousOrders)
       setSelectedOrder(previousSelected)
     }
@@ -404,7 +508,7 @@ export default function AdminPedidos() {
   }
 
   // ===========================
-  // Tracking: abrir modal
+  // Tracking: abrir modal (Manual)
   // ===========================
   const openTrackingModal = async (orderId: string) => {
     if (!canEdit) {
@@ -428,7 +532,7 @@ export default function AdminPedidos() {
   // Tracking: salvar (PUT /tracking)
   // ===========================
   const saveTracking = async () => {
-    if (!trackingOrder || !token) return
+    if (!trackingOrder || !user) return
 
     if (!canEdit) {
       toast.error("Você não tem permissão para editar informações de rastreamento")
@@ -459,22 +563,56 @@ export default function AdminPedidos() {
           quantity: i.quantity,
           lineTotal: i.lineTotal,
         })),
+        isRefundable: trackingOrder.isRefundable,
+        refundStatus: trackingOrder.refundStatus,
+        refundReason: trackingOrder.refundReason,
+        refundRequestedAt: trackingOrder.refundRequestedAt,
+        refundProcessedAt: trackingOrder.refundProcessedAt,
+        orderNumber: trackingOrder.orderNumber,
       }
 
-      const res = await fetch(
+      // 1. Salva Tracking Info
+      const resTracking = await fetch(
         `${API_BASE_URL}/api/admin/orders/${trackingOrder.id}/tracking`,
         {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(dto),
+          credentials: "include",
         },
       )
 
-      if (!res.ok) {
+      if (!resTracking.ok) {
         throw new Error("Falha ao salvar rastreamento")
+      }
+
+      // 2. Atualiza Status para "A Caminho" (Shipped)
+      const adminUserId = user?.id
+      
+      const userIdToSend = adminUserId ?? "00000000-0000-0000-0000-000000000000"
+
+      const statusBody = {
+        newStatus: "Shipped", // Força status Shipped
+        adminUserId: userIdToSend,
+        note: `Rastreio adicionado: ${trackingData.trackingCode}`,
+      }
+
+      const resStatus = await fetch(
+        `${API_BASE_URL}/api/admin/orders/${trackingOrder.id}/status`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(statusBody),
+          credentials: "include",
+        },
+      )
+
+      if (!resStatus.ok) {
+        console.warn("Rastreio salvo, mas falha ao atualizar status para Shipped")
       }
 
       const newStatus = "a_caminho" as OrderStatus
@@ -503,7 +641,7 @@ export default function AdminPedidos() {
         trackingUrl: trackingData.trackingUrl,
       })
 
-      toast.success("Rastreamento salvo com sucesso!")
+      toast.success("Rastreamento salvo e status atualizado!")
       setShowTrackingModal(false)
       setTrackingOrder(null)
       setTrackingData({
@@ -515,6 +653,41 @@ export default function AdminPedidos() {
       console.error("Erro ao salvar rastreamento:", error)
       toast.error("Erro ao salvar informações de rastreamento.")
       setOrders(previousOrders)
+    }
+    }
+
+
+  // ===========================
+  // Decisão de Reembolso
+  // ===========================
+  const handleRefundDecision = (approve: boolean) => {
+    if (!selectedOrder) return
+    setRefundDialog({ open: true, approve })
+  }
+
+  const confirmRefundAction = async () => {
+    if (!selectedOrder || !user) return
+    
+    try {
+        const adminUserId = user.id
+        const userIdToSend = adminUserId ?? "00000000-0000-0000-0000-000000000000"
+        
+        if (refundDialog.approve) {
+            await approveRefund(selectedOrder.id, userIdToSend, undefined)
+            toast.success("Reembolso aprovado com sucesso!")
+        } else {
+            await rejectRefund(selectedOrder.id, userIdToSend, undefined)
+            toast.success("Reembolso recusado.")
+        }
+        
+        setRefundDialog((prev) => ({ ...prev, open: false }))
+        
+        // Refresh do detalhe e da lista
+        void openDetailModal(selectedOrder.id)
+        void fetchOrders()
+    } catch (error) {
+        console.error("Erro ao processar reembolso:", error)
+        toast.error("Erro ao processar solicitação de reembolso.")
     }
   }
 
@@ -547,7 +720,7 @@ export default function AdminPedidos() {
           />
           <input
             type="text"
-            placeholder="Buscar por ID ou cliente..."
+            placeholder="Buscar por Número (MEM-...), ID ou cliente..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value)
@@ -637,13 +810,11 @@ export default function AdminPedidos() {
                 </tr>
               ) : (
                 paginatedOrders.map((order) => {
-                  // 👉 Só mostra valor real se estiver aprovado
+                  // 👉 Agora mostra valor real independente do status (correção visual)
                   const displayTotal =
-                    order.status === "aprovado"
-                      ? order.total && order.total > 0
-                        ? order.total
-                        : order.subtotal + (order.freightValue ?? 0)
-                      : 0
+                    order.total && order.total > 0
+                      ? order.total
+                      : order.subtotal + (order.freightValue ?? 0)
 
                   return (
                     <tr
@@ -651,7 +822,14 @@ export default function AdminPedidos() {
                       className="hover:bg-muted/50 transition-colors"
                     >
                       <td className="px-6 py-4 font-medium text-foreground">
-                        {order.id}
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold">
+                            {order.orderNumber || "Sem Número Amigável"}
+                          </span>
+                          <span className="text-[10px] text-foreground/40 font-mono tracking-tight">
+                            ID: {order.id}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <p className="text-foreground">
@@ -686,6 +864,8 @@ export default function AdminPedidos() {
                                 {orderStatusLabels[order.status]}
                                 <ChevronDown size={14} />
                               </button>
+                              
+
 
                               {showStatusDropdown === order.id && (
                                 <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 min-w-[160px]">
@@ -734,6 +914,17 @@ export default function AdminPedidos() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-center gap-2">
+                          {/* Botão de Alerta de Reembolso (Novo Posicionamento) */}
+                          {order.refundStatus === "Requested" && (
+                            <button
+                              onClick={() => void openDetailModal(order.id)}
+                              className="p-2 text-orange-600 bg-orange-100 hover:bg-orange-200 rounded-lg transition-colors animate-pulse"
+                              title="Solicitação de Reembolso Pendente"
+                            >
+                              <RefreshCcw size={18} />
+                            </button>
+                          )}
+
                           <button
                             onClick={() => void openDetailModal(order.id)}
                             className="p-2 text-foreground/60 hover:text-primary hover:bg-muted rounded-lg transition-colors"
@@ -778,8 +969,11 @@ export default function AdminPedidos() {
             <div className="flex items-center justify-between p-6 border-b border-border">
               <div>
                 <h2 className="text-xl font-medium text-foreground">
-                  Pedido {selectedOrder.id}
+                  Pedido {selectedOrder.orderNumber}
                 </h2>
+                <p className="text-[10px] text-foreground/40 font-mono">
+                  ID Interno: {selectedOrder.id}
+                </p>
                 <p className="text-sm text-foreground/60">
                   Criado em{" "}
                   {new Date(selectedOrder.createdAt).toLocaleDateString(
@@ -796,6 +990,49 @@ export default function AdminPedidos() {
             </div>
 
             <div className="p-6 space-y-6">
+              
+              {/* Se houver solicitação de reembolso, mostra destaque no topo */}
+              {selectedOrder.refundStatus && selectedOrder.refundStatus !== "None" && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 animate-in slide-in-from-top-2">
+                    <h3 className="font-medium text-orange-800 mb-2 flex items-center gap-2">
+                        <RefreshCcw size={18} />
+                        Solicitação de Reembolso
+                    </h3>
+                    <p className="text-sm text-orange-700 mb-2">
+                        <strong>Motivo:</strong> {selectedOrder.refundReason}
+                    </p>
+                    {selectedOrder.refundRequestedAt && (
+                        <p className="text-xs text-orange-600 mb-4 opacity-80">
+                            Solicitado em: {new Date(selectedOrder.refundRequestedAt).toLocaleString()}
+                        </p>
+                    )}
+                    
+                    {selectedOrder.refundStatus === "Requested" ? (
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                onClick={() => handleRefundDecision(true)}
+                                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                            >
+                                Aprovar Reembolso
+                            </button>
+                            <button
+                                onClick={() => handleRefundDecision(false)}
+                                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm"
+                            >
+                                Recusar
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="text-sm font-medium pt-2 border-t border-orange-200 mt-2">
+                            Status: {selectedOrder.refundStatus === "Approved" ? 
+                                <span className="text-green-600 flex items-center gap-1"><RefreshCcw size={14}/> Aprovado</span> : 
+                                <span className="text-red-600 flex items-center gap-1"><X size={14}/> Recusado</span>
+                            }
+                        </div>
+                    )}
+                </div>
+              )}
+
               {/* Status */}
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-foreground">
@@ -869,6 +1106,34 @@ export default function AdminPedidos() {
                     <p className="text-foreground/60">ID do Usuário</p>
                     <p className="text-foreground">{selectedOrder.userId}</p>
                   </div>
+                  {selectedOrder.customerEmail && (
+                    <div>
+                      <p className="text-foreground/60">Email</p>
+                      <p className="text-foreground">
+                        <a href={`mailto:${selectedOrder.customerEmail}`} className="text-accent hover:underline">
+                          {selectedOrder.customerEmail}
+                        </a>
+                      </p>
+                    </div>
+                  )}
+                  {selectedOrder.shippingPhone && (
+                    <div>
+                      <p className="text-foreground/60">Telefone / WhatsApp</p>
+                      <p className="text-foreground">
+                        <a 
+                          href={`https://wa.me/55${selectedOrder.shippingPhone.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-green-600 hover:underline flex items-center gap-1"
+                        >
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                          </svg>
+                          {formatPhone(selectedOrder.shippingPhone)}
+                        </a>
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -922,10 +1187,37 @@ export default function AdminPedidos() {
                       className="flex items-center justify-between py-2 border-b border-border last:border-0"
                     >
                       <div>
-                        <p className="text-foreground">{item.productName}</p>
-                        <p className="text-sm text-foreground/60">
-                          Qtd: {item.quantity}
-                        </p>
+                        <p className="text-foreground font-medium">{item.productName}</p>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          <p className="text-xs text-foreground/60 px-2 py-0.5 bg-muted rounded">
+                            Qtd: {item.quantity}
+                          </p>
+                          {item.sizeName && (
+                            <p className="text-xs text-foreground/60 px-2 py-0.5 bg-muted rounded">
+                              Tamanho: {item.sizeName}
+                            </p>
+                          )}
+                          {!item.sizeName && item.sizeId && (
+                            <p className="text-xs text-foreground/60 px-2 py-0.5 bg-muted rounded">
+                              Tamanho ID: {item.sizeId}
+                            </p>
+                          )}
+                          {item.colorName && (
+                            <p className="text-xs text-foreground/60 px-2 py-0.5 bg-muted rounded">
+                              Cor: {item.colorName}
+                            </p>
+                          )}
+                          {!item.colorName && item.colorId && (
+                            <p className="text-xs text-foreground/60 px-2 py-0.5 bg-muted rounded">
+                              Cor ID: {item.colorId}
+                            </p>
+                          )}
+                        </div>
+                        {item.personalizationText && (
+                          <div className="mt-2 p-2 bg-accent/5 border border-accent/10 rounded text-sm italic text-foreground/80">
+                            " {item.personalizationText} "
+                          </div>
+                        )}
                       </div>
                       <p className="font-medium text-foreground">
                         R{"$ "}
@@ -1090,6 +1382,32 @@ export default function AdminPedidos() {
           </div>
         </div>
       )}
+      
+      {/* Dialog de Confirmação de Reembolso */}
+      <AlertDialog open={refundDialog.open} onOpenChange={(open) => setRefundDialog(prev => ({ ...prev, open }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+                {refundDialog.approve ? "Aprovar Reembolso?" : "Recusar Reembolso?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+                {refundDialog.approve 
+                    ? "Esta ação processará o reembolso no Mercado Pago e marcará o pedido como Reembolsado. Essa ação não pode ser desfeita."
+                    : "Esta ação recusará a solicitação de reembolso do cliente. O status do pedido permanecerá o mesmo."
+                }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+                onClick={confirmRefundAction}
+                className={refundDialog.approve ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}
+            >
+                Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

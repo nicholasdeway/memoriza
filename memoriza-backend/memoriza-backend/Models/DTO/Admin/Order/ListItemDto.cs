@@ -5,6 +5,7 @@ namespace memoriza_backend.Models.DTO.Admin.Order
     public class OrderListItemDto
     {
         public Guid Id { get; set; }
+        public string OrderNumber { get; set; } = string.Empty; // Novo campo
         public string CustomerName { get; set; } = string.Empty;
 
         public decimal Subtotal { get; set; }
@@ -22,6 +23,9 @@ namespace memoriza_backend.Models.DTO.Admin.Order
         public string? TrackingCode { get; set; }
         public string? TrackingCompany { get; set; }
         public string? TrackingUrl { get; set; }
+        
+        // Status de reembolso (para mostrar badge de alerta)
+        public string? RefundStatus { get; set; }
     }
 
     public class OrderItemDto
@@ -31,11 +35,18 @@ namespace memoriza_backend.Models.DTO.Admin.Order
         public decimal UnitPrice { get; set; }
         public int Quantity { get; set; }
         public decimal LineTotal { get; set; }
+
+        public string? PersonalizationText { get; set; }
+        public int? SizeId { get; set; }
+        public int? ColorId { get; set; }
+        public string? SizeName { get; set; }
+        public string? ColorName { get; set; }
     }
 
     public class OrderDetailDto
     {
         public Guid Id { get; set; }
+        public string OrderNumber { get; set; } = string.Empty; // Novo campo
 
         /// <summary>
         /// Id do usuário como string (vem direto da tabela orders.user_id).
@@ -43,6 +54,8 @@ namespace memoriza_backend.Models.DTO.Admin.Order
         public string UserId { get; set; } = string.Empty;
 
         public string CustomerName { get; set; } = string.Empty;
+        public string? CustomerEmail { get; set; }
+        public string? CustomerPhone { get; set; }
 
         public decimal Subtotal { get; set; }
         public decimal FreightValue { get; set; }
@@ -62,6 +75,12 @@ namespace memoriza_backend.Models.DTO.Admin.Order
         public string? TrackingUrl { get; set; }
         public DateTime? DeliveredAt { get; set; }
 
+        public bool IsRefundable { get; set; }
+        public string? RefundStatus { get; set; }
+        public string? RefundReason { get; set; }
+        public DateTime? RefundRequestedAt { get; set; }
+        public DateTime? RefundProcessedAt { get; set; }
+
         // Endereço de Entrega (Snapshot)
         public Guid? ShippingAddressId { get; set; }
         public string? ShippingStreet { get; set; }
@@ -72,6 +91,7 @@ namespace memoriza_backend.Models.DTO.Admin.Order
         public string? ShippingState { get; set; }
         public string? ShippingZipCode { get; set; }
         public string? ShippingCountry { get; set; }
+        public string? ShippingPhone { get; set; }
 
         public List<OrderItemDto> Items { get; set; } = new();
     }

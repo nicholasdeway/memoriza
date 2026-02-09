@@ -8,7 +8,6 @@ namespace memoriza_backend.Controller.User
 {
     [ApiController]
     [Route("api/user/shipping")]
-    // ✅ Removido [Authorize] para permitir visitantes calcularem frete
     public class ShippingController : ControllerBase
     {
         private readonly IShippingService _shippingService;
@@ -18,10 +17,6 @@ namespace memoriza_backend.Controller.User
             _shippingService = shippingService;
         }
 
-        /// <summary>
-        /// Calcula o frete baseado no CEP informado pelo usuário.
-        /// Endpoint público - não requer autenticação.
-        /// </summary>
         [HttpPost("calculate")]
         [AllowAnonymous]
         public async Task<ActionResult<CalculateShippingResponse>> CalculateShipping(
@@ -39,7 +34,6 @@ namespace memoriza_backend.Controller.User
             return Ok(response);
         }
 
-        // Se no futuro quiser usar o userId, mantém esse método
         private string GetUserId()
         {
             var id = User.FindFirstValue(ClaimTypes.NameIdentifier)

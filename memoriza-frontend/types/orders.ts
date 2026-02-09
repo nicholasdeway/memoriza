@@ -43,6 +43,11 @@ export interface OrderItemDto {
     thumbnailUrl: string | null
     quantity: number
     unitPrice: number
+    colorId?: number
+    colorName?: string
+    sizeId?: number
+    sizeName?: string
+    personalizationText?: string
 }
 
 export interface ShippingOptionDto {
@@ -72,6 +77,7 @@ export interface CreateOrderRequest {
     shippingEstimatedDays: number
     pickupInStore: boolean
     shippingAddressId: string
+    shippingPhone?: string
 }
 
 export interface CheckoutInitResponse {
@@ -94,4 +100,32 @@ export interface RefundStatusResponse {
     status: string
     message: string
     requestedAt: string
+}
+
+// Payment Processing Types (Checkout Transparente)
+export interface ProcessPaymentRequest {
+    token?: string // MercadoPago SDK token (required for cards, optional for PIX)
+    payment_method_id: string // "pix", "visa", "master", etc
+    email: string
+    issuer_id?: string // Card issuer ID
+    installments?: number // Default 1
+    document_number?: string // CPF/CNPJ
+    document_type?: string // "CPF" or "CNPJ"
+    payer?: {
+        email: string
+        identification?: {
+            type: string
+            number: string
+        }
+    }
+}
+
+export interface ProcessPaymentResponse {
+    paymentId: number
+    status: string
+    statusDetail: string
+    qrCode?: string
+    qrCodeBase64?: string
+    ticketUrl?: string
+    message: string
 }

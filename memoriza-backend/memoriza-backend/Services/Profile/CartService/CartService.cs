@@ -22,7 +22,7 @@ namespace memoriza_backend.Services.Profile.CartService
         public async Task<ServiceResult<CartSummaryResponse>> AddItemAsync(string userId, AddCartItemRequest request)
         {
             var result = await _cartRepository.AddItemAsync(userId, request);
-            return ServiceResult<CartSummaryResponse>.Ok(result); // 👈 trocado
+            return ServiceResult<CartSummaryResponse>.Ok(result);
         }
 
         public async Task<ServiceResult<CartSummaryResponse>> UpdateItemQuantityAsync(
@@ -30,7 +30,7 @@ namespace memoriza_backend.Services.Profile.CartService
             UpdateCartItemQuantityRequest request)
         {
             var result = await _cartRepository.UpdateItemQuantityAsync(userId, request);
-            return ServiceResult<CartSummaryResponse>.Ok(result); // 👈 trocado
+            return ServiceResult<CartSummaryResponse>.Ok(result);
         }
 
         public async Task<ServiceResult<CartSummaryResponse>> RemoveItemAsync(
@@ -38,7 +38,7 @@ namespace memoriza_backend.Services.Profile.CartService
             RemoveCartItemRequest request)
         {
             var result = await _cartRepository.RemoveItemAsync(userId, request);
-            return ServiceResult<CartSummaryResponse>.Ok(result); // 👈 trocado
+            return ServiceResult<CartSummaryResponse>.Ok(result);
         }
 
         public async Task<ServiceResult<CartSummaryResponse>> ClearCartAsync(
@@ -46,7 +46,7 @@ namespace memoriza_backend.Services.Profile.CartService
             ClearCartRequest request)
         {
             var result = await _cartRepository.ClearCartAsync(userId, request);
-            return ServiceResult<CartSummaryResponse>.Ok(result); // 👈 trocado
+            return ServiceResult<CartSummaryResponse>.Ok(result);
         }
     }
 }

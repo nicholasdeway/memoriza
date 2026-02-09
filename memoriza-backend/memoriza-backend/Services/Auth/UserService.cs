@@ -22,9 +22,7 @@ namespace memoriza_backend.Services.Auth
             _jwtService = jwtService;
         }
 
-        // ======================================================
         // REGISTER (LOCAL) - cria ou reativa conta
-        // ======================================================
         public async Task<string> RegisterAsync(RegisterUserDto dto)
         {
             if (dto.Password != dto.ConfirmPassword)
@@ -106,9 +104,7 @@ namespace memoriza_backend.Services.Auth
             return token;
         }
 
-        // ======================================================
         // LOGIN (EMAIL OU TELEFONE)
-        // ======================================================
         public async Task<string> LoginAsync(LoginUserDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Identifier))
@@ -133,7 +129,7 @@ namespace memoriza_backend.Services.Auth
             if (user == null)
                 throw new ApplicationException("Usuário ou senha inválidos.");
 
-            // 🚫 Garante que conta desativada não loga
+            // Garante que conta desativada não loga
             if (!user.IsActive)
                 throw new ApplicationException("Esta conta foi desativada.");
 
@@ -148,9 +144,7 @@ namespace memoriza_backend.Services.Auth
             return token;
         }
 
-        // ======================================================
         // REQUEST PASSWORD RESET (ESQUECI MINHA SENHA)
-        // ======================================================
         public async Task<string> RequestPasswordResetAsync(RequestPasswordResetDto dto)
         {
             // Agora GetByEmailAsync traz ativos e inativos
@@ -164,9 +158,7 @@ namespace memoriza_backend.Services.Auth
             return "Solicitação de redefinição de senha registrada. Verifique seu e-mail.";
         }
 
-        // ======================================================
         // CONFIRM PASSWORD RESET (LINK/CÓDIGO DE RECUPERAÇÃO)
-        // ======================================================
         public async Task<string> ConfirmPasswordResetAsync(ConfirmPasswordResetDto dto)
         {
             var user = await _repository.GetByEmailAsync(dto.Email);
@@ -193,6 +185,31 @@ namespace memoriza_backend.Services.Auth
             await _repository.UpdatePasswordAsync(user);
 
             return "Senha redefinida com sucesso.";
+        }
+        // GET PROFILE (ME)
+        public async Task<UserProfileDto> GetUserProfileAsync(Guid userId)
+        {
+            var user = await _repository.GetByIdAsync(userId);
+            if (user == null)
+                throw new ApplicationException("Usuário não encontrado.");
+
+            var isAdmin = user.UserGroupId == (int)UserGroupType.Admin;
+            var fullName = $"{user.FirstName} {user.LastName}".Trim();
+
+            return new UserProfileDto
+            {
+                Id = user.Id,
+                Email = user.Email,
+                FirstName = user.FirstName ?? "",
+                LastName = user.LastName ?? "",
+                FullName = fullName,
+                Phone = user.Phone,
+                PictureUrl = user.PictureUrl,
+                UserGroupId = user.UserGroupId,
+                EmployeeGroupId = user.EmployeeGroupId,
+                IsAdmin = isAdmin,
+                AuthProvider = user.AuthProvider ?? "Local"
+            };
         }
     }
 }

@@ -52,6 +52,9 @@ export default function RootLayout({
 
           <Analytics />
         </div>
+        
+        {/* MercadoPago SDK for Checkout Transparente */}
+        <script src="https://sdk.mercadopago.com/js/v2" async></script>
       </body>
     </html>
   )

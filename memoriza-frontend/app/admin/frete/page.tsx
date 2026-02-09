@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { Truck, Save, Loader2 } from "lucide-react"
+import { formatCurrencyBRL, parseCurrencyBRL, formatNumberBRL } from "@/lib/currency-utils"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7105"
+const API_BASE_URL = "/api-proxy"
 
 interface ShippingRegion {
   id: string
@@ -20,17 +21,17 @@ export default function FreteAdminPage() {
   const [regions, setRegions] = useState<ShippingRegion[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
+  const [formattedValues, setFormattedValues] = useState<Record<string, {
+    price: string
+    freeShippingThreshold: string
+  }>>({})
 
   // Carregar regiões ao montar
   useEffect(() => {
     const loadRegions = async () => {
       try {
-        const token = localStorage.getItem("memoriza_token") // ✅ Corrigido para usar a mesma chave do auth-context
-        
         const res = await fetch(`${API_BASE_URL}/api/admin/shipping/regions`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
         })
 
         if (!res.ok) {
@@ -40,6 +41,16 @@ export default function FreteAdminPage() {
 
         const data = await res.json()
         setRegions(data)
+        
+        // Inicializar valores formatados
+        const formatted: Record<string, { price: string; freeShippingThreshold: string }> = {}
+        data.forEach((region: ShippingRegion) => {
+          formatted[region.id] = {
+            price: formatCurrencyBRL(Math.round(region.price * 100).toString()),
+            freeShippingThreshold: formatCurrencyBRL(Math.round(region.freeShippingThreshold * 100).toString()),
+          }
+        })
+        setFormattedValues(formatted)
       } catch (error) {
         console.error("❌ Erro ao carregar regiões:", error)
         toast.error("Erro ao carregar configurações de frete")
@@ -54,19 +65,18 @@ export default function FreteAdminPage() {
   const handleSave = async (region: ShippingRegion) => {
     try {
       setSaving(region.id)
-      const token = localStorage.getItem("memoriza_token") // ✅ Corrigido
 
       const res = await fetch(`${API_BASE_URL}/api/admin/shipping/regions/${region.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           price: region.price,
           estimatedDays: region.estimatedDays,
           freeShippingThreshold: region.freeShippingThreshold,
         }),
+        credentials: "include",
       })
 
       if (!res.ok) throw new Error("Erro ao salvar")
@@ -75,6 +85,15 @@ export default function FreteAdminPage() {
       setRegions((prev) =>
         prev.map((r) => (r.id === updated.id ? updated : r))
       )
+      
+      // Atualizar valores formatados
+      setFormattedValues(prev => ({
+        ...prev,
+        [updated.id]: {
+          price: formatCurrencyBRL(Math.round(updated.price * 100).toString()),
+          freeShippingThreshold: formatCurrencyBRL(Math.round(updated.freeShippingThreshold * 100).toString()),
+        }
+      }))
 
       toast.success(`Região ${region.name} atualizada com sucesso!`)
     } catch (error) {
@@ -143,18 +162,28 @@ export default function FreteAdminPage() {
                     Valor do Frete (R$)
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={region.price}
+                    type="text"
+                    value={formattedValues[region.id]?.price || ""}
                     onChange={(e) => {
-                      const value = e.target.value.replace(',', '.')
-                      const numValue = value === '' ? 0 : parseFloat(value)
+                      const formatted = formatCurrencyBRL(e.target.value)
+                      
+                      // Atualizar valor formatado
+                      setFormattedValues(prev => ({
+                        ...prev,
+                        [region.id]: {
+                          ...prev[region.id],
+                          price: formatted,
+                        }
+                      }))
+                      
+                      // Atualizar valor numérico no estado
+                      const numValue = parseFloat(parseCurrencyBRL(formatted))
                       if (!isNaN(numValue)) {
                         updateRegion(region.id, "price", numValue)
                       }
                     }}
                     className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                    placeholder="0,00"
                   />
                 </div>
 
@@ -180,19 +209,28 @@ export default function FreteAdminPage() {
                     Frete Grátis acima de (R$)
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={region.freeShippingThreshold}
+                    type="text"
+                    value={formattedValues[region.id]?.freeShippingThreshold || ""}
                     onChange={(e) => {
-                      const value = e.target.value.replace(',', '.')
-                      const numValue = value === '' ? 0 : parseFloat(value)
+                      const formatted = formatCurrencyBRL(e.target.value)
+                      
+                      // Atualizar valor formatado
+                      setFormattedValues(prev => ({
+                        ...prev,
+                        [region.id]: {
+                          ...prev[region.id],
+                          freeShippingThreshold: formatted,
+                        }
+                      }))
+                      
+                      // Atualizar valor numérico no estado
+                      const numValue = parseFloat(parseCurrencyBRL(formatted))
                       if (!isNaN(numValue)) {
                         updateRegion(region.id, "freeShippingThreshold", numValue)
                       }
                     }}
                     className="w-full px-3 py-2 border border-border rounded-lg bg-background"
-                    placeholder="0 = sem frete grátis"
+                    placeholder="0,00 (0 = sem frete grátis)"
                   />
                 </div>
               </div>
@@ -201,7 +239,7 @@ export default function FreteAdminPage() {
               <div className="flex items-center justify-between pt-4 border-t border-border">
                 <p className="text-sm text-muted-foreground">
                   {region.freeShippingThreshold > 0
-                    ? `Frete grátis para compras acima de R$ ${region.freeShippingThreshold.toFixed(2)}`
+                    ? `Frete grátis para compras acima de R$ ${formatNumberBRL(region.freeShippingThreshold)}`
                     : "Frete grátis desabilitado"}
                 </p>
                 <button

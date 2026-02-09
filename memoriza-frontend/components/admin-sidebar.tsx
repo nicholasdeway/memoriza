@@ -158,6 +158,26 @@ export function AdminSidebar() {
   });
 
   const [isAnimating, setIsAnimating] = useState(false);
+  const [paidOrdersCount, setPaidOrdersCount] = useState(0);
+  const { token } = useAuth();
+
+  useEffect(() => {
+    if (!token || !isAdmin) return;
+
+    const fetchCount = async () => {
+      try {
+        const { getPaidOrdersCount } = await import("@/lib/api/admin-orders");
+        const count = await getPaidOrdersCount(token);
+        setPaidOrdersCount(count);
+      } catch (error) {
+        console.error("Erro ao buscar contagem de pedidos pagos:", error);
+      }
+    };
+
+    fetchCount();
+    const interval = setInterval(fetchCount, 60000); // 1 minuto
+    return () => clearInterval(interval);
+  }, [token, isAdmin]);
 
   const handleToggle = () => {
     if (isAnimating) return;
@@ -382,7 +402,22 @@ export function AdminSidebar() {
                           {item.label}
                         </span>
 
-                        {isActive && (
+                        {item.module === "orders" && paidOrdersCount > 0 && (
+                          <span
+                            className={`
+                              ml-auto flex items-center justify-center bg-red-500 text-white font-bold rounded-full
+                              ${
+                                expanded
+                                  ? "min-w-[20px] h-5 px-1 text-[10px]"
+                                  : "absolute top-2 right-2 w-4 h-4 text-[9px]"
+                              }
+                            `}
+                          >
+                            {paidOrdersCount}
+                          </span>
+                        )}
+
+                        {isActive && !paidOrdersCount && (
                           <div className="ml-auto w-1 h-6 bg-primary-foreground/40 rounded-full animate-pulse-soft" />
                         )}
                       </Link>
