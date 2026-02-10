@@ -26,7 +26,7 @@ jobs:
         run: dotnet build memoriza-backend/memoriza-backend.sln --configuration Release --no-restore
 
       - name: Publish
-        run: dotnet publish memoriza-backend/memoriza-backend/memoriza-backend.csproj --configuration Release --no-build --output publish
+        run: dotnet publish memoriza-backend/memoriza-backend/memoriza-backend.csproj -c Release -o publish
 
       - name: Setup SSH
         run: |
@@ -48,8 +48,7 @@ jobs:
 
       - name: Restart backend service
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "
-            sudo systemctl daemon-reload &&
-            sudo systemctl restart memoriza-backend &&
-            sudo systemctl status memoriza-backend --no-pager
-          "
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
+            sudo systemctl daemon-reload && \
+            sudo systemctl restart memoriza-backend && \
+            sudo systemctl status memoriza-backend --no-pager"
