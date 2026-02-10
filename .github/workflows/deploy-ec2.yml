@@ -11,35 +11,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup .NET
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.x"
 
-      # 3️⃣ Restore (solution)
       - name: Restore dependencies
         run: dotnet restore memoriza-backend/memoriza-backend.sln
 
-      # 4️⃣ Build (solution)
       - name: Build
-        run: dotnet build memoriza-backend/memoriza-backend.sln \
-          --configuration Release \
-          --no-restore
+        run: dotnet build memoriza-backend/memoriza-backend.sln --configuration Release --no-restore
 
-      # 5️⃣ Publish (APENAS o csproj)
       - name: Publish
-        run: |
-          dotnet publish memoriza-backend/memoriza-backend/memoriza-backend.csproj \
-            --configuration Release \
-            --no-build \
-            --output publish
+        run: dotnet publish memoriza-backend/memoriza-backend/memoriza-backend.csproj --configuration Release --no-build --output publish
 
-      # 6️⃣ Setup SSH
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -47,10 +35,9 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      # 7️⃣ Upload para EC2 (rsync seguro)
       - name: Upload to EC2 (rsync)
         run: |
-          rsync -az --delete \
+          rsync -rz --delete \
             --no-perms \
             --no-owner \
             --no-group \
@@ -59,10 +46,10 @@ jobs:
             publish/ \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.EC2_PATH }}/
 
-      # 8️⃣ Restart do serviço
       - name: Restart backend service
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
-            sudo systemctl daemon-reload && \
-            sudo systemctl restart memoriza-backend && \
-            sudo systemctl status memoriza-backend --no-pager"
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "
+            sudo systemctl daemon-reload &&
+            sudo systemctl restart memoriza-backend &&
+            sudo systemctl status memoriza-backend --no-pager
+          "
