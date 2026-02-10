@@ -11,18 +11,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set up .NET Core
+      - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.x"
 
+      - name: Restore dependencies
+        run: dotnet restore memoriza-backend/memoriza-backend.sln
+
       - name: Build
-        run: dotnet build memoriza-backend/memoriza-backend.sln --configuration Release
+        run: dotnet build memoriza-backend/memoriza-backend.sln --configuration Release --no-restore
 
       - name: Publish
-        run: dotnet publish memoriza-backend/memoriza-backend/memoriza-backend.csproj -c Release -o publish
+        run: dotnet publish memoriza-backend/memoriza-backend/memoriza-backend.csproj \
+          -c Release \
+          -o publish
 
       - name: Setup SSH
         run: |
@@ -33,13 +39,18 @@ jobs:
 
       - name: Upload to EC2 (rsync)
         run: |
-          rsync -az --delete publish/ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.EC2_PATH }}/
+          rsync -rz --delete \
+            --no-perms \
+            --no-owner \
+            --no-group \
+            --omit-dir-times \
+            --exclude 'wwwroot/uploads' \
+            publish/ \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.EC2_PATH }}/
 
-      - name: Fix permissions + Restart service
+      - name: Restart backend service
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
-            sudo chown -R nginx:nginx ${{ secrets.EC2_PATH }} && \
-            sudo chmod -R 755 ${{ secrets.EC2_PATH }} && \
             sudo systemctl daemon-reload && \
-            sudo systemctl restart memoriza-api && \
-            sudo systemctl status memoriza-api --no-pager"
+            sudo systemctl restart memoriza-backend && \
+            sudo systemctl status memoriza-backend --no-pager"
