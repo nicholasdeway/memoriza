@@ -24,6 +24,17 @@ namespace memoriza_backend.Services.Admin.Dashboard
             return await _repository.GetTopProductsAsync(start, end, limit);
         }
 
+        public async Task<IReadOnlyList<RecentOrderDto>> GetRecentOrdersAsync(int limit = 5)
+        {
+            return await _repository.GetRecentOrdersAsync(limit);
+        }
+
+        public async Task<IReadOnlyList<SalesByMonthDto>> GetSalesByMonthAsync(DateTime? from = null, DateTime? to = null)
+        {
+            var (start, end) = NormalizeRange(from, to);
+            return await _repository.GetSalesByMonthAsync(start, end);
+        }
+
         private static (DateTime from, DateTime to) NormalizeRange(DateTime? from, DateTime? to)
         {
             var start = from ?? DateTime.UtcNow.AddDays(-30);

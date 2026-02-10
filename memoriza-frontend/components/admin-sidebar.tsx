@@ -159,15 +159,14 @@ export function AdminSidebar() {
 
   const [isAnimating, setIsAnimating] = useState(false);
   const [paidOrdersCount, setPaidOrdersCount] = useState(0);
-  const { token } = useAuth();
 
   useEffect(() => {
-    if (!token || !isAdmin) return;
+    if (!isAdmin) return;
 
     const fetchCount = async () => {
       try {
         const { getPaidOrdersCount } = await import("@/lib/api/admin-orders");
-        const count = await getPaidOrdersCount(token);
+        const count = await getPaidOrdersCount();
         setPaidOrdersCount(count);
       } catch (error) {
         console.error("Erro ao buscar contagem de pedidos pagos:", error);
@@ -177,7 +176,7 @@ export function AdminSidebar() {
     fetchCount();
     const interval = setInterval(fetchCount, 60000); // 1 minuto
     return () => clearInterval(interval);
-  }, [token, isAdmin]);
+  }, [isAdmin]);
 
   const handleToggle = () => {
     if (isAnimating) return;

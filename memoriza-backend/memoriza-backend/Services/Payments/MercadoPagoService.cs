@@ -168,15 +168,39 @@ namespace memoriza_backend.Services.Payments
         {
             try
             {
-                if (!string.Equals(data.Type, "payment", StringComparison.OrdinalIgnoreCase)) return;
+                // Aceitar webhooks quando Type == "payment" OU Action == "payment.updated"
+                bool isValidWebhook = 
+                    string.Equals(data.Type, "payment", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(data.Action, "payment.updated", StringComparison.OrdinalIgnoreCase);
+
+                if (!isValidWebhook)
+                {
+                    _logger.LogInformation("Webhook ignorado. Type: {Type}, Action: {Action}", data.Type, data.Action);
+                    return;
+                }
                 
                 string? paymentIdStr = data.Data?.Id;
-                if (string.IsNullOrWhiteSpace(paymentIdStr) || !long.TryParse(paymentIdStr, out long paymentId)) return;
+                if (string.IsNullOrWhiteSpace(paymentIdStr) || !long.TryParse(paymentIdStr, out long paymentId))
+                {
+                    _logger.LogWarning("Webhook com PaymentId inválido ou ausente: {PaymentIdStr}", paymentIdStr);
+                    return;
+                }
+
+                _logger.LogInformation("📥 Processando webhook - PaymentId: {PaymentId}", paymentId);
 
                 var paymentClient = new PaymentClient();
                 Payment payment = await paymentClient.GetAsync(paymentId);
 
-                if (!Guid.TryParse(payment.ExternalReference, out Guid orderId)) return;
+                _logger.LogInformation("💳 Pagamento obtido - Status: {Status}, StatusDetail: {StatusDetail}", 
+                    payment.Status, payment.StatusDetail);
+
+                if (!Guid.TryParse(payment.ExternalReference, out Guid orderId))
+                {
+                    _logger.LogWarning("ExternalReference inválida: {ExternalReference}", payment.ExternalReference);
+                    return;
+                }
+
+                _logger.LogInformation("🔗 ExternalReference (OrderId): {OrderId}", orderId);
 
                 string newStatus = payment.Status switch
                 {
@@ -187,21 +211,33 @@ namespace memoriza_backend.Services.Payments
                     _ => OrderStatusCodes.Pending
                 };
 
+                // Implementar idempotência: buscar pedido atual antes de atualizar
+                var currentOrder = await _orderRepository.GetByIdWithItemsAsync(orderId);
+                if (currentOrder == null)
+                {
+                    _logger.LogWarning("Pedido não encontrado: {OrderId}", orderId);
+                    return;
+                }
+
+                // Se o status atual já for "Paid" e o novo status também for "Paid", ignorar
+                if (currentOrder.Status == OrderStatusCodes.Paid && newStatus == OrderStatusCodes.Paid)
+                {
+                    _logger.LogInformation("✅ Webhook duplicado ignorado - Pedido {OrderId} já está com status Paid", orderId);
+                    return;
+                }
+
                 await _orderRepository.UpdateStatusAsync(orderId, newStatus);
-                _logger.LogInformation("Webhook processado. Pedido: {OrderId}, Novo Status: {Status}", orderId, newStatus);
+                _logger.LogInformation("✅ Webhook processado. Pedido: {OrderId}, Status Anterior: {OldStatus}, Novo Status: {NewStatus}", 
+                    orderId, currentOrder.Status, newStatus);
 
                 if (newStatus == OrderStatusCodes.Paid)
                 {
-                    var order = await _orderRepository.GetByIdWithItemsAsync(orderId);
-                    if (order != null) 
-                    {
-                         await ClearCartAsync(order.UserId);
-                    }
+                    await ClearCartAsync(currentOrder.UserId);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao processar webhook do Mercado Pago");
+                _logger.LogError(ex, "❌ Erro ao processar webhook do Mercado Pago");
             }
         }
 

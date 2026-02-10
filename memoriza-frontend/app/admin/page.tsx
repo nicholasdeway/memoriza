@@ -2,17 +2,21 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ShoppingCart, Users, RefreshCcw, DollarSign, Package, Calendar } from "lucide-react"
-import {
-  mockDashboardMetrics,
-  mockSalesData,
-  mockBestSellers,
-  mockOrders,
-  orderStatusLabels,
-  orderStatusColors,
-} from "@/lib/mock-data"
+import { ShoppingCart, Users, RefreshCcw, DollarSign, Package, Calendar, CheckCircle, XCircle, Clock } from "lucide-react"
+import { orderStatusLabels, orderStatusColors } from "@/lib/mock-data"
+import { 
+  getDashboardSummary, 
+  getTopProducts, 
+  getRecentOrders,
+  getSalesByMonth,
+  type DashboardSummary, 
+  type TopProduct,
+  type RecentOrder,
+  type SalesByMonth
+} from "@/lib/api/admin-dashboard"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts"
 import { useAuth } from "@/lib/auth-context"
+import { AdminPagination } from "@/components/admin-pagination"
 
 // Menu structure from admin-sidebar
 const menuSections = [
@@ -44,6 +48,8 @@ export default function AdminDashboard() {
   const { user } = useAuth()
   const [dateFilter, setDateFilter] = useState("30dias")
   const [customDate, setCustomDate] = useState("")
+  const [customDateFrom, setCustomDateFrom] = useState("")
+  const [customDateTo, setCustomDateTo] = useState("")
 
   // Verificar permissões e redirecionar se necessário
   useEffect(() => {
@@ -73,90 +79,152 @@ export default function AdminDashboard() {
     }
   }, [user, router])
 
-  // Simulação de filtro em cima dos mocks (sem usar datas reais)
-  const getSalesDataByFilter = () => {
-    switch (dateFilter) {
+  // Estado para dados reais do backend
+  const [summary, setSummary] = useState<DashboardSummary | null>(null)
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([])
+  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([])
+  const [salesByMonth, setSalesByMonth] = useState<SalesByMonth[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Paginação
+  const [topProductsPage, setTopProductsPage] = useState(1)
+  const [recentOrdersPage, setRecentOrdersPage] = useState(1)
+  const itemsPerPage = 5
+
+  // Filtro de visualização de produtos
+  const [showAllProducts, setShowAllProducts] = useState(false)
+  
+  // Filtro de visualização de pedidos
+  const [showAllOrders, setShowAllOrders] = useState(false)
+
+  // Função para converter filtro em range de datas
+  const getDateRange = (filter: string, customDate: string, customFrom: string, customTo: string): { from?: Date; to?: Date } => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+    switch (filter) {
       case "1dia":
-        return mockSalesData.slice(-1) // último ponto
+        return { from: new Date(today.getTime() - 24 * 60 * 60 * 1000), to: now }
       case "7dias":
-        return mockSalesData.slice(-2)
+        return { from: new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000), to: now }
       case "30dias":
-        return mockSalesData.slice(-3)
+        return { from: new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000), to: now }
       case "90dias":
-        return mockSalesData.slice(-4)
+        return { from: new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000), to: now }
       case "6meses":
-        return mockSalesData.slice(-6)
+        return { from: new Date(today.getTime() - 180 * 24 * 60 * 60 * 1000), to: now }
       case "1ano":
-        return mockSalesData.slice(-12)
+        return { from: new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000), to: now }
       case "custom":
-        // Para data específica, só simulamos menos pontos se tiver data escolhida
         if (customDate) {
-          return mockSalesData.slice(-2)
+          const customFromDate = new Date(customDate)
+          return { from: customFromDate, to: now }
         }
-        return mockSalesData
+        return {}
+      case "range":
+        if (customFrom && customTo) {
+          return { from: new Date(customFrom), to: new Date(customTo) }
+        }
+        return {}
+      case "todos":
       default:
-        // "todos" ou fallback
-        return mockSalesData
+        return {} // Sem filtro = backend usa padrão (30 dias)
     }
   }
 
-  const getOrdersByFilter = () => {
-    switch (dateFilter) {
-      case "1dia":
-        return mockOrders.slice(0, 3)
-      case "7dias":
-        return mockOrders.slice(0, 5)
-      case "30dias":
-        return mockOrders.slice(0, 8)
-      case "90dias":
-        return mockOrders.slice(0, 10)
-      case "6meses":
-        return mockOrders.slice(0, 12)
-      case "1ano":
-        return mockOrders.slice(0, 15)
-      case "custom":
-        if (customDate) {
-          return mockOrders.slice(0, 4)
-        }
-        return mockOrders
-      default:
-        // "todos"
-        return mockOrders
+  // Buscar dados do backend quando filtro mudar
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true)
+        const { from, to } = getDateRange(dateFilter, customDate, customDateFrom, customDateTo)
+        
+        const [summaryData, topProductsData, recentOrdersData, salesData] = await Promise.all([
+          getDashboardSummary(from, to),
+          getTopProducts(from, to, showAllProducts ? 100 : 5), // Top 5 ou todos (até 100)
+          getRecentOrders(showAllOrders ? 100 : 15), // Últimos 15 ou todos (até 100)
+          getSalesByMonth(from, to)
+        ])
+
+        setSummary(summaryData)
+        setTopProducts(topProductsData)
+        setRecentOrders(recentOrdersData)
+        setSalesByMonth(salesData)
+      } catch (error) {
+        console.error("Erro ao buscar dados do dashboard:", error)
+      } finally {
+        setLoading(false)
+      }
     }
+
+    fetchDashboardData()
+  }, [dateFilter, customDate, customDateFrom, customDateTo, showAllProducts, showAllOrders])
+
+  // Mapear status do backend (inglês) para frontend (português)
+  const mapBackendStatus = (backendStatus: string): keyof typeof orderStatusLabels => {
+    const statusMap: Record<string, keyof typeof orderStatusLabels> = {
+      'Pending': 'aguardando_pagamento' as keyof typeof orderStatusLabels,
+      'Paid': 'aprovado',
+      'InProduction': 'em_producao',
+      'Shipped': 'a_caminho',
+      'Delivered': 'entregue',
+      'Refunded': 'reembolsado',
+      'Cancelled': 'cancelado',
+    }
+    return statusMap[backendStatus] || 'aprovado'
   }
 
-  const filteredSalesData = getSalesDataByFilter()
-  const filteredOrders = getOrdersByFilter()
-  const recentOrders = filteredOrders.slice(0, 5)
+  // Cálculos de paginação
+  const totalTopProductsPages = Math.ceil(topProducts.length / itemsPerPage)
+  const startTopProducts = (topProductsPage - 1) * itemsPerPage
+  const paginatedTopProducts = topProducts.slice(startTopProducts, startTopProducts + itemsPerPage)
+
+  const totalRecentOrdersPages = Math.ceil(recentOrders.length / itemsPerPage)
+  const startRecentOrders = (recentOrdersPage - 1) * itemsPerPage
+  const paginatedRecentOrders = recentOrders.slice(startRecentOrders, startRecentOrders + itemsPerPage)
 
   const metrics = [
     {
       title: "Vendas Total",
-      value: `R$ ${mockDashboardMetrics.vendasTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
-      subtitle: `R$ ${mockDashboardMetrics.vendasMesAtual.toLocaleString("pt-BR")} este mês`,
+      value: loading ? "..." : `R$ ${(summary?.totalSales ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+      subtitle: `${summary?.totalOrders ?? 0} pedidos no total`,
       icon: DollarSign,
       color: "text-green-600",
     },
     {
-      title: "Pedidos",
-      value: mockDashboardMetrics.pedidosTotal.toString(),
-      subtitle: `${mockDashboardMetrics.pedidosMesAtual} este mês`,
-      icon: ShoppingCart,
+      title: "Pedidos Aprovados",
+      value: loading ? "..." : (summary?.ordersPaid ?? 0).toString(),
+      subtitle: "Pagamento confirmado",
+      icon: CheckCircle,
       color: "text-blue-600",
     },
     {
-      title: "Reembolsos",
-      value: mockDashboardMetrics.reembolsos.toString(),
-      subtitle: `R$ ${mockDashboardMetrics.reembolsosValor.toLocaleString("pt-BR")} total`,
-      icon: RefreshCcw,
-      color: "text-orange-600",
+      title: "Aguardando Pagg.",
+      value: loading ? "..." : (summary?.ordersAwaitingPayment ?? 0).toString(),
+      subtitle: "Pendentes de pagamento",
+      icon: Clock,
+      color: "text-yellow-600",
     },
     {
-      title: "Clientes",
-      value: mockDashboardMetrics.clientesTotal.toString(),
-      subtitle: `Ticket médio: R$ ${mockDashboardMetrics.ticketMedio.toFixed(2)}`,
-      icon: Users,
+      title: "Em Produção",
+      value: loading ? "..." : (summary?.ordersInProduction ?? 0).toString(),
+      subtitle: `${summary?.ordersFinished ?? 0} finalizados`,
+      icon: Package,
       color: "text-purple-600",
+    },
+    {
+      title: "Pedidos Cancelados",
+      value: loading ? "..." : (summary?.ordersCancelled ?? 0).toString(),
+      subtitle: "Cancelados ou falhos",
+      icon: XCircle,
+      color: "text-red-600",
+    },
+    {
+      title: "Reembolsos",
+      value: loading ? "..." : `R$ ${(summary?.totalRefunds ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+      subtitle: `Total reembolsado`,
+      icon: RefreshCcw,
+      color: "text-orange-600",
     },
   ]
 
@@ -199,6 +267,7 @@ export default function AdminDashboard() {
             <option value="1ano">Último ano</option>
             <option value="todos">Todo período</option>
             <option value="custom">Data específica</option>
+            <option value="range">Intervalo personalizado</option>
           </select>
 
           {dateFilter === "custom" && (
@@ -209,11 +278,31 @@ export default function AdminDashboard() {
               className="bg-background border border-border rounded-lg px-3 py-2 text-sm"
             />
           )}
+
+          {dateFilter === "range" && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={customDateFrom}
+                onChange={(e) => setCustomDateFrom(e.target.value)}
+                placeholder="De"
+                className="bg-background border border-border rounded-lg px-3 py-2 text-sm"
+              />
+              <span className="text-foreground/60 text-sm">até</span>
+              <input
+                type="date"
+                value={customDateTo}
+                onChange={(e) => setCustomDateTo(e.target.value)}
+                placeholder="Até"
+                className="bg-background border border-border rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+          )}
         </div>
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {metrics.map((metric, idx) => {
           const Icon = metric.icon
           return (
@@ -238,15 +327,15 @@ export default function AdminDashboard() {
           <h3 className="font-medium text-foreground mb-6">Vendas por Mês</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={filteredSalesData}>
+              <BarChart data={salesByMonth}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
-                <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip
                   formatter={(value) => [`R$ ${Number(value).toLocaleString("pt-BR")}`, "Vendas"]}
                   contentStyle={{ borderRadius: 8, border: "1px solid #e5e5e5" }}
                 />
-                <Bar dataKey="vendas" fill="#1a1a1a" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="sales" fill="#1a1a1a" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -257,15 +346,15 @@ export default function AdminDashboard() {
           <h3 className="font-medium text-foreground mb-6">Tendência de Vendas</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={filteredSalesData}>
+              <LineChart data={salesByMonth}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
-                <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip
                   formatter={(value) => [`R$ ${Number(value).toLocaleString("pt-BR")}`, "Vendas"]}
                   contentStyle={{ borderRadius: 8, border: "1px solid #e5e5e5" }}
                 />
-                <Line type="monotone" dataKey="vendas" stroke="#c9a87c" strokeWidth={2} dot={{ fill: "#c9a87c" }} />
+                <Line type="monotone" dataKey="sales" stroke="#c9a87c" strokeWidth={2} dot={{ fill: "#c9a87c" }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -276,51 +365,139 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Best Sellers */}
         <div className="bg-card border border-border rounded-xl p-6">
-          <h3 className="font-medium text-foreground mb-6">Produtos Mais Vendidos</h3>
-          <div className="space-y-4">
-            {mockBestSellers.map((product, idx) => (
-              <div key={idx} className="flex items-center justify-between py-3 border-b border-border last:border-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-                    <Package size={16} className="text-foreground/60" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground text-sm">{product.nome}</p>
-                    <p className="text-xs text-foreground/60">{product.vendas} vendas</p>
-                  </div>
-                </div>
-                <p className="font-medium text-foreground">
-                  R$ {product.receita.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-medium text-foreground">Produtos Mais Vendidos</h3>
+            <button
+              onClick={() => {
+                setShowAllProducts(!showAllProducts)
+                setTopProductsPage(1) // Resetar para página 1
+              }}
+              className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                showAllProducts
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-foreground hover:bg-muted/80'
+              }`}
+            >
+              {showAllProducts ? 'Ver Top 5' : 'Ver Todos'}
+            </button>
           </div>
+          {loading ? (
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-center justify-between py-3 border-b border-border last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
+                    <div className="space-y-2">
+                      <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                      <div className="h-3 w-20 bg-muted animate-pulse rounded" />
+                    </div>
+                  </div>
+                  <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                </div>
+              ))}
+            </div>
+          ) : topProducts.length > 0 ? (
+            <>
+              <div className="space-y-4">
+                {paginatedTopProducts.map((product) => (
+                  <div key={product.productId} className="flex items-center justify-between py-3 border-b border-border last:border-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                        <Package size={16} className="text-foreground/60" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground text-sm">{product.productName}</p>
+                        <p className="text-xs text-foreground/60">{product.quantitySold} vendas</p>
+                      </div>
+                    </div>
+                    <p className="font-medium text-foreground">
+                      R$ {product.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <AdminPagination
+                currentPage={topProductsPage}
+                totalPages={totalTopProductsPages}
+                onPageChange={setTopProductsPage}
+                totalItems={topProducts.length}
+                itemsPerPage={itemsPerPage}
+                itemLabel="produtos"
+              />
+            </>
+          ) : (
+            <p className="text-sm text-foreground/60 text-center py-8">Nenhum produto vendido no período</p>
+          )}
         </div>
 
         {/* Recent Orders */}
         <div className="bg-card border border-border rounded-xl p-6">
-          <h3 className="font-medium text-foreground mb-6">Pedidos Recentes</h3>
-          <div className="space-y-4">
-            {recentOrders.map((order) => (
-              <div
-                key={order.id}
-                className="flex items-center justify-between py-3 border-b border-border last:border-0"
-              >
-                <div>
-                  <p className="font-medium text-foreground text-sm">{order.id}</p>
-                  <p className="text-xs text-foreground/60">{order.clienteNome}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-medium text-foreground text-sm">
-                    R$ {order.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                  </p>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${orderStatusColors[order.status]}`}>
-                    {orderStatusLabels[order.status]}
-                  </span>
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-medium text-foreground">Pedidos Recentes</h3>
+            <button
+              onClick={() => {
+                setShowAllOrders(!showAllOrders)
+                setRecentOrdersPage(1) // Resetar para página 1
+              }}
+              className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                showAllOrders
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-foreground hover:bg-muted/80'
+              }`}
+            >
+              {showAllOrders ? 'Ver Últimos 15' : 'Ver Todos'}
+            </button>
           </div>
+          {loading ? (
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-center justify-between py-3 border-b border-border last:border-0">
+                  <div className="space-y-2">
+                    <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                    <div className="h-3 w-24 bg-muted animate-pulse rounded" />
+                  </div>
+                  <div className="space-y-2 text-right">
+                    <div className="h-4 w-20 bg-muted animate-pulse rounded ml-auto" />
+                    <div className="h-5 w-16 bg-muted animate-pulse rounded ml-auto" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : recentOrders.length > 0 ? (
+            <>
+              <div className="space-y-4">
+                {paginatedRecentOrders.map((order) => (
+                  <div
+                    key={order.orderNumber}
+                    className="flex items-center justify-between py-3 border-b border-border last:border-0"
+                  >
+                    <div>
+                      <p className="font-medium text-foreground text-sm">{order.orderNumber}</p>
+                      <p className="text-xs text-foreground/60">{order.customerName}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-foreground text-sm">
+                        R$ {order.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </p>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${orderStatusColors[mapBackendStatus(order.status)]}`}>
+                        {orderStatusLabels[mapBackendStatus(order.status)]}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <AdminPagination
+                currentPage={recentOrdersPage}
+                totalPages={totalRecentOrdersPages}
+                onPageChange={setRecentOrdersPage}
+                totalItems={recentOrders.length}
+                itemsPerPage={itemsPerPage}
+                itemLabel="pedidos"
+              />
+            </>
+          ) : (
+            <p className="text-sm text-foreground/60 text-center py-8">Nenhum pedido recente</p>
+          )}
         </div>
       </div>
     </div>
