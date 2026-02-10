@@ -14,5 +14,11 @@ namespace memoriza_backend.Services.Admin.Dashboard
             DateTime? to = null,
             int limit = 5
         );
+
+        Task<IReadOnlyList<RecentOrderDto>> GetRecentOrdersAsync(int limit = 5);
+
+        Task<IReadOnlyList<SalesByMonthDto>> GetSalesByMonthAsync(
+            DateTime? from = null,
+            DateTime? to = null);
     }
 }
