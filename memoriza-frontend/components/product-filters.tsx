@@ -90,15 +90,12 @@ export function ProductFilters({
             {categoryOptions.map((cat) => (
               <label
                 key={cat.id}
-                className="flex items-center space-x-2 cursor-pointer"
-              >
+                className="flex items-center space-x-2 cursor-pointer">
                 <input
-                  type="radio"
-                  name="category"
-                  value={cat.id}
-                  checked={selectedCategoryId === cat.id}
-                  onChange={(e) => onCategoryChange(e.target.value)}
+                  type="checkbox"
                   className="rounded-sm"
+                  checked={selectedCategoryId === cat.id}
+                  onChange={() => onCategoryChange(cat.id)}
                 />
                 <span className="text-sm text-foreground/70">{cat.label}</span>
               </label>
@@ -114,15 +111,12 @@ export function ProductFilters({
           {priceRanges.map((range) => (
             <label
               key={range}
-              className="flex items-center space-x-2 cursor-pointer"
-            >
+              className="flex items-center space-x-2 cursor-pointer">
               <input
-                type="radio"
-                name="price"
-                value={range}
-                checked={selectedPrice === range}
-                onChange={(e) => onPriceChange(e.target.value)}
+                type="checkbox"
                 className="rounded-sm"
+                checked={selectedPrice === range}
+                onChange={() => onPriceChange(range)}
               />
               <span className="text-sm text-foreground/70">{range}</span>
             </label>

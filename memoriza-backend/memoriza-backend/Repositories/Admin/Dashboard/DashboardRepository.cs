@@ -28,12 +28,14 @@ namespace memoriza_backend.Repositories.Admin.Dashboard
         {
             const string sql = @"
                 SELECT
-                    COALESCE(SUM(CASE WHEN status IN (2,3,4,5) THEN total ELSE 0 END), 0) AS ""TotalSales"",
-                    COALESCE(SUM(CASE WHEN status = 6 THEN total ELSE 0 END), 0) AS ""TotalRefunds"",
+                    COALESCE(SUM(CASE WHEN status IN ('Paid','InProduction','Shipped','Delivered') THEN total ELSE 0 END), 0) AS ""TotalSales"",
+                    COALESCE(SUM(CASE WHEN status = 'Refunded' THEN total ELSE 0 END), 0) AS ""TotalRefunds"",
                     COUNT(*) AS ""TotalOrders"",
-                    COUNT(*) FILTER (WHERE status = 1) AS ""OrdersAwaitingPayment"",
-                    COUNT(*) FILTER (WHERE status = 3) AS ""OrdersInProduction"",
-                    COUNT(*) FILTER (WHERE status = 5) AS ""OrdersFinished""
+                    COUNT(*) FILTER (WHERE status = 'Pending') AS ""OrdersAwaitingPayment"",
+                    COUNT(*) FILTER (WHERE status IN ('Paid', 'InProduction', 'Shipped', 'Delivered')) AS ""OrdersPaid"",
+                    COUNT(*) FILTER (WHERE status = 'Cancelled') AS ""OrdersCancelled"",
+                    COUNT(*) FILTER (WHERE status = 'InProduction') AS ""OrdersInProduction"",
+                    COUNT(*) FILTER (WHERE status = 'Delivered') AS ""OrdersFinished""
                 FROM orders
                 WHERE created_at BETWEEN @from AND @to;
             ";
@@ -60,11 +62,11 @@ namespace memoriza_backend.Repositories.Admin.Dashboard
                     oi.product_id       AS ""ProductId"",
                     oi.product_name     AS ""ProductName"",
                     SUM(oi.quantity)    AS ""QuantitySold"",
-                    SUM(oi.subtotal)    AS ""TotalAmount""
+                    SUM(oi.unit_price * oi.quantity) AS ""TotalAmount""
                 FROM order_items oi
                 JOIN orders o ON o.id = oi.order_id
                 WHERE o.created_at BETWEEN @from AND @to
-                  AND o.status IN (2,3,4,5)
+                  AND o.status IN ('Paid', 'InProduction', 'Shipped', 'Delivered')
                 GROUP BY oi.product_id, oi.product_name
                 ORDER BY ""QuantitySold"" DESC
                 LIMIT @limit;
@@ -81,6 +83,59 @@ namespace memoriza_backend.Repositories.Admin.Dashboard
             });
 
             return products.AsList();
+        }
+
+        // =====================================================
+        // RECENT ORDERS
+        // =====================================================
+        public async Task<IReadOnlyList<RecentOrderDto>> GetRecentOrdersAsync(int limit)
+        {
+            const string sql = @"
+                SELECT 
+                    o.order_number AS ""OrderNumber"",
+                    COALESCE(u.first_name || ' ' || u.last_name, 'Cliente') AS ""CustomerName"",
+                    o.total AS ""Total"",
+                    o.status AS ""Status"",
+                    o.created_at AS ""CreatedAt""
+                FROM orders o
+                LEFT JOIN users u ON u.id = o.user_id
+                ORDER BY o.created_at DESC
+                LIMIT @limit;
+            ";
+
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
+
+            var orders = await conn.QueryAsync<RecentOrderDto>(sql, new { limit });
+            return orders.AsList();
+        }
+
+        // =====================================================
+        // SALES BY MONTH
+        // =====================================================
+        public async Task<IReadOnlyList<SalesByMonthDto>> GetSalesByMonthAsync(DateTime from, DateTime to)
+        {
+            const string sql = @"
+                SELECT 
+                    TO_CHAR(created_at, 'Mon') AS ""Month"",
+                    COALESCE(SUM(total), 0) AS ""Sales""
+                FROM orders
+                WHERE created_at BETWEEN @from AND @to
+                  AND status IN ('Paid','InProduction','Shipped','Delivered')
+                GROUP BY TO_CHAR(created_at, 'Mon'), EXTRACT(MONTH FROM created_at)
+                ORDER BY EXTRACT(MONTH FROM created_at);
+            ";
+
+            await using var conn = GetConnection();
+            await conn.OpenAsync();
+
+            var sales = await conn.QueryAsync<SalesByMonthDto>(sql, new
+            {
+                from,
+                to
+            });
+
+            return sales.AsList();
         }
     }
 }

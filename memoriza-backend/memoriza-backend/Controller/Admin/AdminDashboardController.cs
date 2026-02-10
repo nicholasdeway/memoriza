@@ -38,5 +38,21 @@ namespace memoriza_backend.Controllers.Admin
             var top = await _service.GetTopProductsAsync(from, to, limit);
             return Ok(top);
         }
+
+        [HttpGet("recent-orders")]
+        public async Task<IActionResult> GetRecentOrders([FromQuery] int limit = 5)
+        {
+            var orders = await _service.GetRecentOrdersAsync(limit);
+            return Ok(orders);
+        }
+
+        [HttpGet("sales-by-month")]
+        public async Task<IActionResult> GetSalesByMonth(
+            [FromQuery] DateTime? from = null,
+            [FromQuery] DateTime? to = null)
+        {
+            var sales = await _service.GetSalesByMonthAsync(from, to);
+            return Ok(sales);
+        }
     }
 }

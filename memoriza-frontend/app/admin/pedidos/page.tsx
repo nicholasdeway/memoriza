@@ -196,7 +196,7 @@ const backendToUiStatus = (
 ): OrderStatus => {
   switch (status) {
     case "Pending":
-      return "aguardando_pagamento" as OrderStatus
+      return "pendente" as OrderStatus
     case "Paid":
       return "aprovado"
     case "InProduction":
@@ -210,13 +210,13 @@ const backendToUiStatus = (
     case "Cancelled":
       return "cancelado"
     default:
-      return "aguardando_pagamento" as OrderStatus
+      return "pendente" as OrderStatus
   }
 }
 
 const uiToBackendStatus = (status: OrderStatus): BackendOrderStatus => {
   const map: Record<string, BackendOrderStatus> = {
-    aguardando_pagamento: "Pending",
+    pendente: "Pending",
     aprovado: "Paid",
     em_producao: "InProduction",
     a_caminho: "Shipped",

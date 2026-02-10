@@ -195,9 +195,10 @@ export const mockProducts = [
 ]
 
 // Status de pedidos
-export type OrderStatus = "aprovado" | "em_producao" | "a_caminho" | "entregue" | "reembolsado" | "cancelado"
+export type OrderStatus = "pendente" | "aprovado" | "em_producao" | "a_caminho" | "entregue" | "reembolsado" | "cancelado"
 
 export const orderStatusLabels: Record<OrderStatus, string> = {
+  pendente: "Pendente",
   aprovado: "Aprovado",
   em_producao: "Em Produção",
   a_caminho: "À Caminho",
@@ -207,6 +208,7 @@ export const orderStatusLabels: Record<OrderStatus, string> = {
 }
 
 export const orderStatusColors: Record<OrderStatus, string> = {
+  pendente: "bg-yellow-100 text-yellow-700",
   aprovado: "bg-green-100 text-green-700",
   em_producao: "bg-blue-100 text-blue-700",
   a_caminho: "bg-purple-100 text-purple-700",
