@@ -11,7 +11,7 @@ const nextConfig = {
     return [
       {
         source: '/api-proxy/:path*',
-        destination: 'http://127.0.0.1:5026/:path*',
+        destination: `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:5026'}/:path*`,
       },
     ];
   },
