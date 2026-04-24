@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace memoriza_backend.Models.Entities
 {
@@ -34,12 +34,6 @@ namespace memoriza_backend.Models.Entities
         /// True se esta opção representa retirada na loja.
         /// </summary>
         public bool IsPickupOption { get; set; }
-
-        /// <summary>
-        /// Valor mínimo do carrinho para frete grátis nesta região.
-        /// Se 0, não há frete grátis configurado para esta região.
-        /// </summary>
-        public decimal FreeShippingThreshold { get; set; }
 
         public bool IsActive { get; set; } = true;
     }

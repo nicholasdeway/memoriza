@@ -1,16 +1,10 @@
-﻿namespace memoriza_backend.Models.DTO.User.Shipping
+namespace memoriza_backend.Models.DTO.User.Shipping
 {
     public class CalculateShippingResponse
     {
         public List<ShippingOptionDto> Options { get; set; } = new();
 
-        // Frete grátis configurado pelo admin
-        public bool FreeShippingEnabled { get; set; }
-
-        // Valor mínimo para ativar
-        public decimal FreeShippingThreshold { get; set; }
-
-        // Se este pedido ATINGIU o limiar (baseado no subtotal)
+        // Indica se o frete é grátis (atualmente apenas para retirada em mãos)
         public bool IsFreeShipping { get; set; }
     }
 }

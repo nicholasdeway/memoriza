@@ -34,7 +34,6 @@ namespace memoriza_backend.Controller.Admin
                 Name = r.Name,
                 Price = r.Price,
                 EstimatedDays = r.EstimatedDays,
-                FreeShippingThreshold = r.FreeShippingThreshold,
                 IsActive = r.IsActive
             }).ToList();
 
@@ -60,7 +59,6 @@ namespace memoriza_backend.Controller.Admin
             // Atualizar campos editáveis
             region.Price = dto.Price;
             region.EstimatedDays = dto.EstimatedDays;
-            region.FreeShippingThreshold = dto.FreeShippingThreshold;
 
             // Salvar
             var updated = await _shippingRepository.UpdateRegionAsync(region);
@@ -72,7 +70,6 @@ namespace memoriza_backend.Controller.Admin
                 Name = updated.Name,
                 Price = updated.Price,
                 EstimatedDays = updated.EstimatedDays,
-                FreeShippingThreshold = updated.FreeShippingThreshold,
                 IsActive = updated.IsActive
             };
 

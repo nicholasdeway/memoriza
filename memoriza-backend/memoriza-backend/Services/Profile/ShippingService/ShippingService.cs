@@ -1,4 +1,4 @@
-﻿using memoriza_backend.Models.DTO.User.Shipping;
+using memoriza_backend.Models.DTO.User.Shipping;
 using memoriza_backend.Repositories.Shipping;
 
 namespace memoriza_backend.Services.Profile.ShippingService
@@ -34,8 +34,6 @@ namespace memoriza_backend.Services.Profile.ShippingService
                             EstimatedDays = 0
                         }
                     },
-                    FreeShippingEnabled = false,
-                    FreeShippingThreshold = 0,
                     IsFreeShipping = true
                 };
             }
@@ -49,26 +47,10 @@ namespace memoriza_backend.Services.Profile.ShippingService
             if (option == null)
                 return null;
 
-            // Calcular frete grátis baseado no threshold da região
-            bool isFreeShipping = false;
-            decimal threshold = 0m;
-
-            // Buscar a região completa para obter o threshold
-            var regionEntity = await _shippingRepository.GetRegionByCodeAsync(option.Code);
-            
-            if (regionEntity != null)
-            {
-                threshold = regionEntity.FreeShippingThreshold;
-                // Frete grátis se: threshold > 0 E subtotal >= threshold
-                isFreeShipping = threshold > 0 && request.CartSubtotal >= threshold;
-            }
-
             return new CalculateShippingResponse
             {
                 Options = new List<ShippingOptionDto> { option },
-                FreeShippingEnabled = threshold > 0,
-                FreeShippingThreshold = threshold,
-                IsFreeShipping = isFreeShipping
+                IsFreeShipping = false
             };
         }
 
