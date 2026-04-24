@@ -15,10 +15,5 @@ namespace memoriza_backend.Models.DTO.Admin.Shipping
         /// </summary>
         public int EstimatedDays { get; set; }
 
-        /// <summary>
-        /// Valor mínimo do carrinho para frete grátis nesta região.
-        /// Se 0, não há frete grátis.
-        /// </summary>
-        public decimal FreeShippingThreshold { get; set; }
     }
 }

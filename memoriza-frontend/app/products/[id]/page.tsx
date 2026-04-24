@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { Check } from "lucide-react"
+import { Check, Truck } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
@@ -139,6 +139,11 @@ export default function ProductDetailPage({
 
   // Estado para parcelamento
   const [installments, setInstallments] = useState<InstallmentsResponse | null>(null)
+
+  // Estados para frete
+  const [cep, setCep] = useState("")
+  const [isCalculatingShipping, setIsCalculatingShipping] = useState(false)
+  const [shippingResponse, setShippingResponse] = useState<any>(null)
 
   useEffect(() => {
     const loadProduct = async () => {
@@ -277,6 +282,75 @@ export default function ProductDetailPage({
 
     void fetchInstallments();
   }, [product, selectedSizeId, currentPrice, currentPromoPrice]);
+
+  const performShippingCalculation = async (cepToCalculate: string, showError = false) => {
+    const cleanCep = cepToCalculate.replace(/\D/g, "")
+    if (cleanCep.length !== 8) {
+      if (showError) toast.error("Por favor, informe um CEP válido com 8 dígitos.")
+      return
+    }
+
+    try {
+      setIsCalculatingShipping(true)
+      setShippingResponse(null)
+
+      const subtotal = currentPromoPrice ?? currentPrice
+
+      const response = await fetch(`${API_BASE_URL}/api/user/shipping/calculate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          cep: cleanCep,
+          pickupInStore: false,
+          cartSubtotal: subtotal,
+        }),
+      })
+
+      if (!response.ok) {
+        if (showError) {
+          if (response.status === 404) {
+            toast.error("Sentimos muito, mas ainda não entregamos nesta região.")
+          } else {
+            toast.error("Erro ao calcular o frete. Tente novamente mais tarde.")
+          }
+        }
+        return
+      }
+
+      const data = await response.json()
+      setShippingResponse(data)
+    } catch (error) {
+      console.error("Erro ao calcular frete:", error)
+      if (showError) toast.error("Ocorreu um erro ao calcular o frete.")
+    } finally {
+      setIsCalculatingShipping(false)
+    }
+  }
+
+  // Novo: Buscar endereço padrão para cálculo automático de frete
+  useEffect(() => {
+    const fetchDefaultAddressAndCalculate = async () => {
+      if (!user || !product) return
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/profile/addresses/default`)
+        if (res.ok) {
+          const address = await res.json()
+          if (address && address.zipCode) {
+            setCep(address.zipCode)
+            // Chamamos o cálculo passando o CEP diretamente para evitar atrasos do estado
+            await performShippingCalculation(address.zipCode)
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao buscar endereço padrão:", error)
+      }
+    }
+
+    void fetchDefaultAddressAndCalculate()
+  }, [user, product])
 
   if (loading) {
     return (
@@ -417,6 +491,18 @@ export default function ProductDetailPage({
     }
   }
 
+  // ===== handler: calcular frete =====
+  const handleCalculateShipping = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await performShippingCalculation(cep, true)
+  }
+
+  const formatCep = (value: string) => {
+    const digits = value.replace(/\D/g, "")
+    if (digits.length <= 5) return digits
+    return `${digits.slice(0, 5)}-${digits.slice(5, 8)}`
+  }
+
   // ===== Render principal =====
   return (
     <div className="min-h-screen flex flex-col">
@@ -507,9 +593,6 @@ export default function ProductDetailPage({
                     </>
                   )}
                 </div>
-                <p className="text-sm text-foreground/70">
-                  Frete grátis para compras acima de R$ 200,00
-                </p>
                 
                 {/* Parcelamento */}
                 {installments && (() => {
@@ -652,6 +735,59 @@ export default function ProductDetailPage({
                   </p>
                 </div>
               )}
+
+              {/* Cálculo de Frete */}
+              <div className="space-y-4 p-4 border border-border rounded-lg bg-muted/20">
+                <div className="flex items-center gap-2 text-foreground font-medium">
+                  <Truck className="w-4 h-4" />
+                  <h3>Calcular Frete</h3>
+                </div>
+                
+                <form onSubmit={handleCalculateShipping} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="00000-000"
+                    value={formatCep(cep)}
+                    onChange={(e) => setCep(e.target.value)}
+                    maxLength={9}
+                    className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm placeholder-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isCalculatingShipping}
+                    className="bg-secondary text-secondary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-secondary/80 transition-colors disabled:opacity-50"
+                  >
+                    {isCalculatingShipping ? "Calculando..." : "Calcular"}
+                  </button>
+                </form>
+
+                {shippingResponse && (
+                  <div className="space-y-3 pt-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                    {shippingResponse.options.map((option: any) => (
+                      <div key={option.code} className="flex justify-between items-center text-sm p-3 bg-background border border-border rounded-md shadow-sm">
+                        <div className="space-y-0.5">
+                          <p className="font-semibold text-foreground">
+                            {option.name}
+                            {option.estimatedDays > 0 && (
+                              <span className="ml-2 font-normal text-foreground/60">
+                                (até {option.estimatedDays} dias úteis)
+                              </span>
+                            )}
+                          </p>
+                          {option.description && (
+                            <p className="text-xs text-foreground/50">{option.description}</p>
+                          )}
+                        </div>
+                        <p className="font-bold text-accent">
+                          {option.price === 0 
+                            ? "Grátis" 
+                            : `R$ ${option.price.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Quantidade e Adicionar ao Carrinho */}
               <div className="flex gap-4">

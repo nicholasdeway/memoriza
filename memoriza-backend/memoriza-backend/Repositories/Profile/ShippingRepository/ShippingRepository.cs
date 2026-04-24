@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using Dapper;
 using memoriza_backend.Models.Entities;
@@ -26,7 +26,6 @@ namespace memoriza_backend.Repositories.Shipping
                     price,
                     estimated_days           AS ""EstimatedDays"",
                     is_pickup_option         AS ""IsPickupOption"",
-                    free_shipping_threshold  AS ""FreeShippingThreshold"",
                     is_active                AS ""IsActive""
                 FROM shipping_regions
                 WHERE code = @Code
@@ -35,61 +34,6 @@ namespace memoriza_backend.Repositories.Shipping
 
             await using var conn = new NpgsqlConnection(_connectionString);
             return await conn.QueryFirstOrDefaultAsync<ShippingRegion>(sql, new { Code = code });
-        }
-
-        public async Task<StoreShippingSettings?> GetStoreSettingsAsync()
-        {
-            const string sql = @"
-                SELECT
-                    id,
-                    free_shipping_enabled   AS ""FreeShippingEnabled"",
-                    free_shipping_threshold AS ""FreeShippingThreshold""
-                FROM store_shipping_settings
-                ORDER BY id
-                LIMIT 1;
-            ";
-
-            await using var conn = new NpgsqlConnection(_connectionString);
-            return await conn.QueryFirstOrDefaultAsync<StoreShippingSettings>(sql);
-        }
-
-        public async Task<StoreShippingSettings> UpsertStoreSettingsAsync(StoreShippingSettings settings)
-        {
-            if (settings.Id == Guid.Empty)
-            {
-                settings.Id = Guid.NewGuid();
-
-                const string insertSql = @"
-                    INSERT INTO store_shipping_settings (
-                        id,
-                        free_shipping_enabled,
-                        free_shipping_threshold
-                    )
-                    VALUES (
-                        @Id,
-                        @FreeShippingEnabled,
-                        @FreeShippingThreshold
-                    );
-                ";
-
-                await using var conn = new NpgsqlConnection(_connectionString);
-                await conn.ExecuteAsync(insertSql, settings);
-                return settings;
-            }
-            else
-            {
-                const string updateSql = @"
-                    UPDATE store_shipping_settings
-                    SET 
-                        free_shipping_enabled   = @FreeShippingEnabled,
-                        free_shipping_threshold = @FreeShippingThreshold
-                    WHERE id = @Id;
-                ";
-
-                await using var conn = new NpgsqlConnection(_connectionString);
-                await conn.ExecuteAsync(updateSql, settings);
-                return settings;
-            }
         }
 
         // ===== Admin Methods =====
@@ -104,7 +48,6 @@ namespace memoriza_backend.Repositories.Shipping
                     price,
                     estimated_days           AS ""EstimatedDays"",
                     is_pickup_option         AS ""IsPickupOption"",
-                    free_shipping_threshold  AS ""FreeShippingThreshold"",
                     is_active                AS ""IsActive""
                 FROM shipping_regions
                 ORDER BY 
@@ -133,7 +76,6 @@ namespace memoriza_backend.Repositories.Shipping
                     price,
                     estimated_days           AS ""EstimatedDays"",
                     is_pickup_option         AS ""IsPickupOption"",
-                    free_shipping_threshold  AS ""FreeShippingThreshold"",
                     is_active                AS ""IsActive""
                 FROM shipping_regions
                 WHERE id = @Id
@@ -150,8 +92,7 @@ namespace memoriza_backend.Repositories.Shipping
                 UPDATE shipping_regions
                 SET
                     price                    = @Price,
-                    estimated_days           = @EstimatedDays,
-                    free_shipping_threshold  = @FreeShippingThreshold
+                    estimated_days           = @EstimatedDays
                 WHERE id = @Id;
             ";
 

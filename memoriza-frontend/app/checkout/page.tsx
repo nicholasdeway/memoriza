@@ -59,7 +59,6 @@ interface ShippingOption {
   name: string
   price: number
   estimatedDays: number
-  isFreeShipping: boolean
 }
 
 // Tipos da BrasilAPI
@@ -1125,14 +1124,9 @@ const formatCpfMask = (value: string) => {
                                   <p className="text-xs text-foreground/60">
                                     Entrega em {option.estimatedDays} dias úteis
                                   </p>
-                                  {option.isFreeShipping && (
-                                    <p className="text-xs text-green-600 font-medium mt-1">
-                                      ✓ Frete grátis aplicado
-                                    </p>
-                                  )}
                                 </div>
                                 <p className="font-medium">
-                                  {option.price === 0 || option.isFreeShipping
+                                  {option.price === 0
                                     ? "Grátis"
                                     : `R$ ${option.price.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                 </p>

@@ -15,7 +15,6 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { PromoBanner } from "./promo-banner";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 
@@ -198,7 +197,6 @@ export function Header() {
 
   return (
     <>
-      <PromoBanner />
       <header className="sticky top-0 z-50 bg-primary border-b border-white/10 shadow-sm transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20 gap-4">
@@ -207,9 +205,9 @@ export function Header() {
               <Image 
                 src="/logo-header.png" 
                 alt="Memoriza" 
-                width={450} 
+                width={200} 
                 height={120}
-                className="h-25 sm:h-28 lg:h-35 w-auto mt-2"
+                className="h-14 sm:h-16 lg:h-18 w-auto mt-2"
                 priority
               />
             </Link>
