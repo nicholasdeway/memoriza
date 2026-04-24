@@ -5,16 +5,16 @@ import { Instagram, Phone, MapPin } from "lucide-react"
 export function Footer() {
   return (
     <footer className="bg-primary text-primary-foreground">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-16">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           {/* Brand */}
-          <div>
+          <div className="flex flex-col items-start">
             <Image 
               src="/logo-footer.png" 
               alt="Memoriza" 
-              width={450} 
-              height={120}
-              className="h-22 sm:h-28 lg:h-35 w-auto mt-2 mb-4"
+              width={200} 
+              height={60}
+              className="h-20 sm:h-24 lg:h-28 w-auto mb-4"
               priority
             />
             <p className="text-primary-foreground/70 text-sm leading-relaxed">
@@ -83,12 +83,12 @@ export function Footer() {
               <li className="flex items-start space-x-2">
                 <Instagram size={16} className="mt-0.5 flex-shrink-0" />
                 <a 
-                  href="https://www.instagram.com/memorizzado/" 
+                  href="https://www.instagram.com/tsmemoriza/" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="hover:text-primary-foreground/80 transition-colors"
                 >
-                  @memorizzado
+                  @tsmemoriza
                 </a>
               </li>
               <li className="flex items-start space-x-2">

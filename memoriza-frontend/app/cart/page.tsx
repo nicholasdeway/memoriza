@@ -18,8 +18,6 @@ interface ShippingOption {
   name: string
   price: number
   estimatedDays: number
-  isFreeShipping: boolean
-  freeShippingThreshold: number
 }
 
 function formatCurrency(value: number): string {
@@ -115,12 +113,8 @@ export default function CartPage() {
     void calculateShipping()
   }, [user, subtotal])
 
-  const shipping = shippingOption?.isFreeShipping ? 0 : (shippingOption?.price ?? 0)
+  const shipping = shippingOption?.price ?? 0
   const total = subtotal + shipping
-  const freeShippingThreshold = shippingOption?.freeShippingThreshold ?? 0
-  const missingForFreeShipping = freeShippingThreshold > 0 && subtotal < freeShippingThreshold
-    ? freeShippingThreshold - subtotal
-    : 0
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -288,15 +282,6 @@ export default function CartPage() {
                             Gerenciar endereços →
                           </Link>
                         )}
-                      </div>
-                    )}
-                    
-                    {/* Incentivo para frete grátis */}
-                    {missingForFreeShipping > 0 && !loadingShipping && !shippingError && (
-                      <div className="bg-accent/10 border border-accent/20 rounded-lg p-3 mt-2">
-                        <p className="text-xs text-accent font-medium">
-                          🎉 Adicione {formatCurrency(missingForFreeShipping)} para ganhar frete grátis!
-                        </p>
                       </div>
                     )}
                     

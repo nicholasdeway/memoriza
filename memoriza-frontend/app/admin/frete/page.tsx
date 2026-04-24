@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { Truck, Save, Loader2 } from "lucide-react"
-import { formatCurrencyBRL, parseCurrencyBRL, formatNumberBRL } from "@/lib/currency-utils"
+import { formatCurrencyBRL, parseCurrencyBRL } from "@/lib/currency-utils"
 
 const API_BASE_URL = "/api-proxy"
 
@@ -13,7 +13,7 @@ interface ShippingRegion {
   name: string
   price: number
   estimatedDays: number
-  freeShippingThreshold: number
+  freeShippingThreshold?: number
   isActive: boolean
 }
 
@@ -23,7 +23,6 @@ export default function FreteAdminPage() {
   const [saving, setSaving] = useState<string | null>(null)
   const [formattedValues, setFormattedValues] = useState<Record<string, {
     price: string
-    freeShippingThreshold: string
   }>>({})
 
   // Carregar regiões ao montar
@@ -39,15 +38,14 @@ export default function FreteAdminPage() {
           throw new Error(`Erro ao carregar regiões: ${res.status} - ${errorText}`)
         }
 
-        const data = await res.json()
+        const data: ShippingRegion[] = await res.json()
         setRegions(data)
         
         // Inicializar valores formatados
-        const formatted: Record<string, { price: string; freeShippingThreshold: string }> = {}
+        const formatted: Record<string, { price: string }> = {}
         data.forEach((region: ShippingRegion) => {
           formatted[region.id] = {
             price: formatCurrencyBRL(Math.round(region.price * 100).toString()),
-            freeShippingThreshold: formatCurrencyBRL(Math.round(region.freeShippingThreshold * 100).toString()),
           }
         })
         setFormattedValues(formatted)
@@ -72,16 +70,16 @@ export default function FreteAdminPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          price: region.price,
-          estimatedDays: region.estimatedDays,
-          freeShippingThreshold: region.freeShippingThreshold,
+          Price: region.price,
+          EstimatedDays: region.estimatedDays,
+          FreeShippingThreshold: 0,
         }),
         credentials: "include",
       })
 
       if (!res.ok) throw new Error("Erro ao salvar")
 
-      const updated = await res.json()
+      const updated: ShippingRegion = await res.json()
       setRegions((prev) =>
         prev.map((r) => (r.id === updated.id ? updated : r))
       )
@@ -91,7 +89,6 @@ export default function FreteAdminPage() {
         ...prev,
         [updated.id]: {
           price: formatCurrencyBRL(Math.round(updated.price * 100).toString()),
-          freeShippingThreshold: formatCurrencyBRL(Math.round(updated.freeShippingThreshold * 100).toString()),
         }
       }))
 
@@ -104,7 +101,7 @@ export default function FreteAdminPage() {
     }
   }
 
-  const updateRegion = (id: string, field: keyof ShippingRegion, value: number) => {
+  const updateRegion = (id: string, field: "price" | "estimatedDays", value: number) => {
     setRegions((prev) =>
       prev.map((r) => {
         if (r.id === id) {
@@ -137,7 +134,7 @@ export default function FreteAdminPage() {
             <h1 className="text-3xl font-bold">Configurações de Frete</h1>
           </div>
           <p className="text-muted-foreground">
-            Configure o valor do frete, prazo de entrega e frete grátis para cada região do Brasil
+            Configure o valor do frete e prazo de entrega para cada região do Brasil
           </p>
         </div>
 
@@ -155,7 +152,7 @@ export default function FreteAdminPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 {/* Preço */}
                 <div>
                   <label className="block text-sm font-medium mb-2">
@@ -202,46 +199,10 @@ export default function FreteAdminPage() {
                     className="w-full px-3 py-2 border border-border rounded-lg bg-background"
                   />
                 </div>
-
-                {/* Frete Grátis */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Frete Grátis acima de (R$)
-                  </label>
-                  <input
-                    type="text"
-                    value={formattedValues[region.id]?.freeShippingThreshold || ""}
-                    onChange={(e) => {
-                      const formatted = formatCurrencyBRL(e.target.value)
-                      
-                      // Atualizar valor formatado
-                      setFormattedValues(prev => ({
-                        ...prev,
-                        [region.id]: {
-                          ...prev[region.id],
-                          freeShippingThreshold: formatted,
-                        }
-                      }))
-                      
-                      // Atualizar valor numérico no estado
-                      const numValue = parseFloat(parseCurrencyBRL(formatted))
-                      if (!isNaN(numValue)) {
-                        updateRegion(region.id, "freeShippingThreshold", numValue)
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-border rounded-lg bg-background"
-                    placeholder="0,00 (0 = sem frete grátis)"
-                  />
                 </div>
-              </div>
 
               {/* Info e Botão */}
-              <div className="flex items-center justify-between pt-4 border-t border-border">
-                <p className="text-sm text-muted-foreground">
-                  {region.freeShippingThreshold > 0
-                    ? `Frete grátis para compras acima de R$ ${formatNumberBRL(region.freeShippingThreshold)}`
-                    : "Frete grátis desabilitado"}
-                </p>
+              <div className="flex items-center justify-end pt-4 border-t border-border">
                 <button
                   onClick={() => handleSave(region)}
                   disabled={saving === region.id}
@@ -269,9 +230,7 @@ export default function FreteAdminPage() {
           <h3 className="font-semibold mb-2">ℹ️ Informações</h3>
           <ul className="text-sm text-muted-foreground space-y-1">
             <li>• O frete é calculado automaticamente baseado no CEP do cliente</li>
-            <li>• Configure "0" no campo de frete grátis para desabilitar</li>
             <li>• As alterações são aplicadas imediatamente após salvar</li>
-            <li>• Cada região possui seu próprio threshold de frete grátis</li>
           </ul>
         </div>
       </div>

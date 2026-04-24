@@ -65,12 +65,6 @@ const FullImageTemplate = ({ item }: { item: CarouselItem }) => (
         Sem imagem
       </div>
     )}
-
-    {item.ctaLink && (
-      <Link href={item.ctaLink} className="absolute inset-0 z-10">
-        <span className="sr-only">{item.title}</span>
-      </Link>
-    )}
   </div>
 )
 

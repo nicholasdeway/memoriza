@@ -17,9 +17,6 @@ namespace memoriza_backend.Validations.Admin.Shipping
                 .LessThanOrEqualTo(365)
                 .WithMessage("O prazo de entrega não pode exceder 365 dias.");
 
-            RuleFor(x => x.FreeShippingThreshold)
-                .GreaterThanOrEqualTo(0)
-                .WithMessage("O valor mínimo para frete grátis não pode ser negativo.");
         }
     }
 }

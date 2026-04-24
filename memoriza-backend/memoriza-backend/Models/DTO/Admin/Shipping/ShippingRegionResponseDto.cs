@@ -10,7 +10,6 @@ namespace memoriza_backend.Models.DTO.Admin.Shipping
         public string Name { get; set; } = string.Empty;
         public decimal Price { get; set; }
         public int EstimatedDays { get; set; }
-        public decimal FreeShippingThreshold { get; set; }
         public bool IsActive { get; set; }
     }
 }
