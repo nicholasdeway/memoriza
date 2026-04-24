@@ -2,6 +2,8 @@
 
 O Memoriza é uma aplicação fullstack voltada para a venda de artigos de papelaria personalizáveis. O projeto foi desenvolvido pensando em uso real, com foco em segurança, organização do código e experiência do usuário, contando com interface responsiva adaptada para diferentes tamanhos de tela.
 
+🔗 Acesse o deploy: https://memoriza-one.vercel.app
+
 ---
 
 ## Funcionalidades
