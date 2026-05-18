@@ -1,4 +1,4 @@
-﻿// ========== ADMIN – REPOSITORIES ==========
+// ========== ADMIN – REPOSITORIES ==========
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using memoriza_backend.Repositories.Admin.CarouselItems;
@@ -45,6 +45,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 // ========== SWAGGER / OPENAPI ==========
 using Microsoft.OpenApi.Models;
@@ -99,7 +100,9 @@ builder.Services.AddCors(options =>
             .WithOrigins(
                 "http://localhost:3000",
                 "https://localhost:3000",
-                "https://memoriza-one.vercel.app"
+                "https://memoriza-one.vercel.app",
+                "https://memoriza.store",
+                "https://www.memoriza.store"
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
@@ -185,6 +188,14 @@ builder.Services.AddFluentValidationAutoValidation();
 
 // --- Background Services ---
 builder.Services.AddHostedService<memoriza_backend.Services.BackgroundJobs.OrderCancellationBackgroundService>();
+
+// --- Forwarded Headers (para proxy reverso como Cloudflare/Nginx/DuckDNS) ---
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // ======================================================
 // AUTORIZAÇÃO
@@ -329,6 +340,8 @@ builder.Services
     });
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 // ======================================================
 // PIPELINE HTTP
