@@ -18,7 +18,7 @@ export function Footer() {
               priority
             />
             <p className="text-primary-foreground/70 text-sm leading-relaxed">
-              Papelaria personalizada • Presentes • Brindes • Mimos
+              Presentes • Brindes • Mimos
             </p>
           </div>
 

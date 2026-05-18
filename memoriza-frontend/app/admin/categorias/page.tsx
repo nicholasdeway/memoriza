@@ -949,7 +949,7 @@ export default function AdminCategorias() {
                     setFormData({ ...formData, nome: e.target.value })
                   }
                   className="w-full px-4 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-accent"
-                  placeholder="Ex: Papelaria Personalizada"
+                  placeholder="Ex: Presentes"
                 />
                 <p className="text-xs text-foreground/60 mt-1">
                   Slug gerado:{" "}
