@@ -100,7 +100,6 @@ builder.Services.AddCors(options =>
             .WithOrigins(
                 "http://localhost:3000",
                 "https://localhost:3000",
-                "https://memoriza-one.vercel.app",
                 "https://memoriza.store",
                 "https://www.memoriza.store"
             )
