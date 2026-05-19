@@ -40,6 +40,7 @@ A organização prioriza segurança, manutenibilidade e escalabilidade do códig
 
 ### Backend
 
+* .NET
 * C#
 * ASP.NET Core
 * PostgreSQL (Supabase)
